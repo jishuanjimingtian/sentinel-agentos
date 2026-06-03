@@ -1,0 +1,130 @@
+name: coderev Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      checks: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install coderev
+        run: npm install -g @lishihao2749/coderev
+
+      - name: Generate PR diff
+        id: diff
+        run: |
+          git diff origin/${{ github.base_ref }}...HEAD > pr_diff.txt
+          echo "diff_size=$(wc -c < pr_diff.txt)" >> $GITHUB_OUTPUT
+
+      - name: Run coderev review
+        id: review
+        run: |
+          coderev review pr_diff.txt --format json > review_output.json 2>&1 || true
+          echo "issues_count=$(jq length review_output.json)" >> $GITHUB_OUTPUT
+
+      - name: Post review comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const review = JSON.parse(fs.readFileSync('review_output.json', 'utf8'));
+            
+            if (!review || review.length === 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: '## ✅ coderev 审查通过\n\n未发现代码问题，继续保持！'
+              });
+              return;
+            }
+            
+            let body = '## 🔍 coderev 代码审查报告\n\n';
+            body += `共发现 **${review.length}** 个问题\n\n`;
+            
+            const errors = review.filter(r => r.severity === 'error');
+            const warnings = review.filter(r => r.severity === 'warning');
+            const infos = review.filter(r => r.severity === 'info');
+            
+            if (errors.length > 0) {
+              body += `### 🔴 错误 (${errors.length})\n\n`;
+              for (const e of errors) {
+                body += `- **${e.rule}**: ${e.message}${e.line ? ` (行 ${e.line})` : ''}\n`;
+              }
+              body += '\n';
+            }
+            
+            if (warnings.length > 0) {
+              body += `### 🟡 警告 (${warnings.length})\n\n`;
+              for (const w of warnings) {
+                body += `- **${w.rule}**: ${w.message}${w.line ? ` (行 ${w.line})` : ''}\n`;
+              }
+              body += '\n';
+            }
+            
+            if (infos.length > 0) {
+              body += `### 🔵 建议 (${infos.length})\n\n`;
+              for (const i of infos) {
+                body += `- **${i.rule}**: ${i.message}${i.line ? ` (行 ${i.line})` : ''}\n`;
+              }
+              body += '\n';
+            }
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+            
+            // 同时添加行内评论
+            for (const r of review) {
+              if (r.file && r.line) {
+                try {
+                  await github.rest.pulls.createReviewComment({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.issue.number,
+                    body: `**[${r.severity.toUpperCase()}] ${r.rule}**: ${r.message}`,
+                    commit_id: context.payload.pull_request.head.sha,
+                    path: r.file,
+                    line: r.line
+                  });
+                } catch (e) {
+                  // 行内评论可能因为文件不在 diff 中而失败，忽略
+                }
+              }
+            }
+            
+            // 设置检查状态
+            await github.rest.checks.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              name: 'coderev',
+              head_sha: context.payload.pull_request.head.sha,
+              status: 'completed',
+              conclusion: errors.length > 0 ? 'failure' : 'success',
+              output: {
+                title: 'coderev 代码审查',
+                summary: `发现 ${errors.length} 个错误, ${warnings.length} 个警告, ${infos.length} 个建议`,
+                text: review.map(r => `[${r.severity.toUpperCase()}] ${r.rule}: ${r.message} (行 ${r.line})`).join('\n')
+              }
+            });

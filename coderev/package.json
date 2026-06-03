@@ -1,0 +1,25 @@
+{
+  "name": "@lishihao2749/coderev",
+  "version": "0.2.0",
+  "description": "AI-powered code review agent for pull requests and diffs",
+  "type": "module",
+  "bin": {
+    "coderev": "dist/cli.js"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/cli.js"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "chalk": "^5.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
+  }
+}
