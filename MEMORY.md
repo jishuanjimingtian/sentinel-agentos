@@ -79,7 +79,7 @@ OpenClaw 每次新对话会创建新 session，旧对话历史不再可用。
 - **npm 包名**：`coderev-cli`（aisync 账号）
 - **GitHub 仓库**：`git@github.com:jishuanjimingtian/coderev.git`
 - **项目路径**：`C:\Users\十号\.openclaw\workspace\projects\coderev`
-- **当前版本**：**v1.0.18**（最新发布版）
+- **当前版本**：**v1.0.21**（最新发布版）
 - **Git 账号**：2749278679@qq.com / Annie-Bot
 - **SSH Key**：`C:\Users\十号\.ssh\github_anne`（已配置 GitHub SSH）
 - **npm 账号**：aisync（token 已配置）
@@ -95,6 +95,7 @@ OpenClaw 每次新对话会创建新 session，旧对话历史不再可用。
 | 体验提升 | 交互式修复 / 增量审查 / HTML 报告 / CI 模式 | v1.0.15 |
 | 配置继承 | 多级 .coderevrc.json 深度合并 | v1.0.17 |
 | Git Blame | --blame 区分新增 vs 已有问题 | v1.0.17 |
+| **GitLab CI** | **`.gitlab-ci.yml` 模板 + `coderev init --gitlab-ci`** | **v1.0.21** ✅ |
 | GitHub Action | action.yml，支持行内评论 | v1.0.17 |
 | **GitHub App** | **coderev serve 自动审查 PR** | **v1.0.18** ✅ |
 
@@ -112,11 +113,13 @@ OpenClaw 每次新对话会创建新 session，旧对话历史不再可用。
 | v1.0.16 | 06-02 | README 重写 + CHANGELOG 创建 |
 | v1.0.17 | 06-03 | 配置继承 + Git Blame + GitHub Action |
 | **v1.0.18** | **06-03** | **GitHub App 自动审查（coderev serve）** |
+| **v1.0.21** | **06-04** | **GitLab CI 原生集成（模板 + CLI）** |
 
 ### TODO 路线
-- [ ] v0.5.0 剩余：SaaS 规则仓库 / VS Code 扩展 / GitLab CI
-- [ ] 变现：Product Hunt 发布（已注册，待提交）
-- [ ] 变现：GitHub Sponsors 正式开通
+- [x] v0.5.0 GitLab CI：`.gitlab-ci.yml` 模板 + `coderev init --gitlab-ci` ✅
+- [x] v0.5.0 剩余：SaaS 规则仓库 / VS Code 扩展 ✅
+- [x] 变现：Product Hunt 发布 ✅（2026-06-04 审核通过）
+- [ ] 变现：GitHub Sponsors 正式开通（设置 tiers）
 - [ ] 远期：AST 级别分析、企业版
 
 ---
@@ -153,20 +156,25 @@ OpenClaw 每次新对话会创建新 session，旧对话历史不再可用。
 ## 📍 活跃对话状态
 
 ### 当前话题
-GitHub App 自动审查 + Product Hunt 发布准备
+GitLab CI 原生集成（已完成）+ 变现推进
 
 ### 上一轮最后做的事情
-- 创建 Product Hunt 账号（GitHub 登录，已注册）
-- 设计新版 Logo（色块渐变风，SVG + PNG）
-- `coderev serve` 命令开发完成并发布 v1.0.18
-- 修复 cron 定时器超时（timeoutSeconds: 300）
-- 知识库优化（本文件更新 + INDEX.md 创建）
+- 开发 GitLab CI 原生集成：`templates/.gitlab-ci.yml` + `coderev init --gitlab-ci`
+- 发布 v1.0.21 到 npm
+- 创建 CONTRIBUTING.md 贡献指南
+- 更新 MEMORY.md / TODO.md / ROADMAP.md / CHANGELOG.md
+- v1.0.22-v1.0.24 发布（VS Code扩展/GitHub Action/规则市场/多模型支持）
+- **配置崩溃修复 + 防护（2026-06-04）**：
+  - 根因：`openclaw.json` 中 `agents.defaults.model.fallbacks` 字段被周期性丢失导致验证失败
+  - 方案一：`openclaw.json` + `known-good` 备份均加只读保护
+  - 方案二：`scripts/config-guard.ps1` 每30分钟校验 → 损坏自动恢复
+  - 计划任务：`\OpenClaw\OpenClaw Config Guard`
 
 ### 未完成待办
-- [ ] GitHub App 部署到服务器（等老板给服务器信息）
-- [ ] GitHub 上创建 GitHub App 并配置
-- [ ] Product Hunt 提交产品发布
-- [ ] Logo PNG 上传到 Product Hunt
+- [ ] GitHub Sponsors 正式开通（设置 tiers）
+- [x] ~~Product Hunt 审核通过（2026-06-04 老板确认）~~
+- [ ] v0.5.0 剩余：VS Code 扩展
+- [ ] 远期：SaaS 规则仓库
 
 ### 近期对话摘要
 | 日期 | 内容 |
@@ -176,7 +184,31 @@ GitHub App 自动审查 + Product Hunt 发布准备
 | 06-01 | 多Agent 改造 + 自身改造 + 账号迁移 + 报告双语化 |
 | 06-02 | cron 改造 + README 重写 + CHANGELOG |
 | 06-03 | v0.4.0/v1.0.17 + GitHub App(v1.0.18) + Product Hunt 注册 + Logo + 知识库优化 |
+| 06-04 | Product Hunt 审核通过 + 配置崩溃修复 + v1.0.22-24 发布 |
 
 ---
 
-_最后更新：2026-06-03 13:00_
+_最后更新：2026-06-09 12:05_
+
+## 🕐 Cron 定时器 — 汇报改造（2026-06-09）
+所有 9 个定时任务已全面改造确保执行后有汇报。
+
+### 改造要点
+1. coderev ①②③ 从 main systemEvent → isolated agentTurn + announce delivery
+2. AgentOS ① 从 main systemEvent → isolated agentTurn + announce delivery
+3. AgentOS ① 从单纯的"推荐计划"升级为完整的开发推进（读plan→写代码→提交→汇报）
+4. AgentOS ②③ 的 delivery target 补上，timeout 从 300→600s
+5. 归档任务 timeout 从 120→300s
+
+### 当前定时器一览
+| # | 名称 | 时间 | 类型 | 交付 | timeout |
+|---|------|------|------|------|--------|
+| 1 | coderev ① 需求挖掘 | 8:00 | isolated aT | announce ✅ | 300s |
+| 2 | coderev ② 开发发布 | 8:35 | isolated aT | announce ✅ | 600s |
+| 3 | coderev ③ 汇总汇报 | 9:10 | isolated aT | announce ✅ | 300s |
+| 4 | AgentOS ① 推进 | 14:00 | isolated aT | announce ✅ | 600s |
+| 5 | AgentOS ② 测试 | 14:30 | isolated aT | announce ✅ | 600s |
+| 6 | AgentOS ③ 总结 | 17:00 | isolated aT | announce ✅ | 600s |
+| 7 | 每日5点汇总 | 17:00 | isolated aT | announce ✅ | 600s |
+| 8 | Agent 每日学习 | 17:30 | isolated aT | announce ✅ | 600s |
+| 9 | 每日0点归档 | 0:00 | isolated aT | none（合理） | 300s |
