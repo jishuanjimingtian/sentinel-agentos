@@ -162,6 +162,9 @@ export class PreExecEvaluator {
  * whether the agent selected the right tool for the job.
  */
 export class RuntimeEvaluator {
+  /** Historical tool selection patterns — toolName -> successful scenario count */
+  private toolHistory: Map<string, { calls: number; successes: number }> = new Map();
+
   /**
    * Evaluate a completed tool execution.
    */
@@ -178,10 +181,25 @@ export class RuntimeEvaluator {
     const durationMs = options.endTime - options.startTime;
     const toolSuccess = !options.hadTimeout && options.toolResult !== undefined;
 
-    // Tool selection accuracy
-    const toolSelectionMatch = options.expectedTool
-      ? options.toolName === options.expectedTool
-      : undefined;
+    // Tool selection accuracy: compare against historical patterns
+    let toolSelectionMatch: boolean | undefined;
+    if (options.expectedTool) {
+      // Direct comparison if expectedTool is provided
+      toolSelectionMatch = options.toolName === options.expectedTool;
+    } else {
+      // Auto-detect: is this tool historically successful for similar params?
+      const history = this.toolHistory.get(options.toolName);
+      if (history) {
+        const historicalSuccessRate = history.calls > 0
+          ? history.successes / history.calls
+          : 0;
+        // If this tool has >70% historical success, consider it a "good" selection
+        toolSelectionMatch = historicalSuccessRate > 0.7 ? true : undefined;
+      }
+    }
+
+    // Record this call in history
+    this.recordToolCall(options.toolName, toolSuccess);
 
     // Adaptive score: composite of retry rate, timeout, correction
     let adaptiveScore = 1.0;
@@ -200,6 +218,31 @@ export class RuntimeEvaluator {
       durationMs,
     };
   }
+
+  /** Record a tool call in the history tracker */
+  private recordToolCall(toolName: string, success: boolean): void {
+    const existing = this.toolHistory.get(toolName);
+    if (existing) {
+      existing.calls++;
+      if (success) existing.successes++;
+    } else {
+      this.toolHistory.set(toolName, { calls: 1, successes: success ? 1 : 0 });
+    }
+  }
+
+  /** Get tool selection accuracy statistics */
+  getToolAccuracy(): Record<string, { calls: number; successRate: number }> {
+    const result: Record<string, { calls: number; successRate: number }> = {};
+    for (const [tool, history] of this.toolHistory) {
+      result[tool] = {
+        calls: history.calls,
+        successRate: history.calls > 0
+          ? Math.round((history.successes / history.calls) * 100) / 100
+          : 0,
+      };
+    }
+    return result;
+  }
 }
 
 /**
@@ -209,6 +252,9 @@ export class RuntimeEvaluator {
  * and checks if the agent actually used its own result later.
  */
 export class PostExecEvaluator {
+  /** Track result references for utilization scoring */
+  private resultReferenceTracker: Map<string, { result: unknown; referenced: boolean }> = new Map();
+
   /**
    * Evaluate post-execution outcomes.
    */
@@ -249,5 +295,38 @@ export class PostExecEvaluator {
       healthy,
       diffLinesChanged: options.diffLinesChanged,
     };
+  }
+
+  /**
+   * Track a tool result for later utilization detection.
+   * Call this after each tool execution.
+   */
+  trackResult(operationId: string, result: unknown): void {
+    this.resultReferenceTracker.set(operationId, { result, referenced: false });
+  }
+
+  /**
+   * Mark a previously-tracked result as referenced (used by the agent later).
+   */
+  markResultReferenced(operationId: string): void {
+    const entry = this.resultReferenceTracker.get(operationId);
+    if (entry) entry.referenced = true;
+  }
+
+  /**
+   * Check if a result has been utilized by the agent.
+   */
+  isResultReferenced(operationId: string): boolean {
+    return this.resultReferenceTracker.get(operationId)?.referenced ?? false;
+  }
+
+  /**
+   * Get overall result utilization rate.
+   */
+  getUtilizationRate(): number {
+    const entries = Array.from(this.resultReferenceTracker.values());
+    if (entries.length === 0) return 0;
+    const referenced = entries.filter((e) => e.referenced).length;
+    return Math.round((referenced / entries.length) * 100) / 100;
   }
 }

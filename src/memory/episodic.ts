@@ -68,7 +68,12 @@ export class EpisodicMemory {
     customImportanceBoost = 0,
   ): EpisodicEvent {
     const baseImportance = BASE_IMPORTANCE[type] ?? 0.3;
-    const recencyBoost = 1.0; // Brand new event = max recency
+
+    // RecencyBoost: DESIGN.md §5.4 — newer = more important
+    // Boost = 1.0 + max(0, 1.0 - ageInDays / 30)
+    const recencyBoost = 1.0; // Brand new event = max recency (1.0)
+
+    // FrequencyBoost: same-tag events +0.1 each (max +0.5)
     const frequencyBoost = Math.min(0.5, this.countByTags(tags) * 0.1);
 
     const importance = Math.min(

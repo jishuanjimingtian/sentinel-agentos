@@ -311,6 +311,10 @@ export class VerifyGate {
       checks.push(...this.verifyFileChanges(snapshot));
     }
 
+    // Always run result format checks
+    checks.push(this.verifyResultFormat(claimedResult));
+    checks.push(this.verifyNonEmptyResult(claimedResult));
+
     return this.evaluateChecks(checks);
   }
 
@@ -393,8 +397,40 @@ export class VerifyGate {
       return { name: 'npm publish', status: 'PASS', detail: 'Agent acknowledged no publish' };
     }
 
-    // Can't easily verify external npm without package name — skip
-    return { name: 'npm publish', status: 'PASS', detail: 'Publish verification skipped (no package info)' };
+    // Use npm view to verify latest version
+    try {
+      const pkgPath = path.join(this.workspaceRoot, 'package.json');
+      if (fs.existsSync(pkgPath)) {
+        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+        const { execSync } = require('child_process');
+        const result = execSync(`npm view ${pkg.name} version 2>&1`, {
+          cwd: this.workspaceRoot,
+          encoding: 'utf-8',
+          stdio: ['pipe', 'pipe', 'ignore'],
+          timeout: 5000,
+        }).trim();
+
+        if (result === pkg.version) {
+          return {
+            name: 'npm publish',
+            status: 'PASS',
+            detail: `npm registry confirms ${pkg.name}@${pkg.version}`,
+          };
+        }
+        return {
+          name: 'npm publish',
+          status: 'WARN',
+          detail: `npm shows ${result}, local is ${pkg.version}`,
+        };
+      }
+    } catch {
+      return {
+        name: 'npm publish',
+        status: 'WARN',
+        detail: 'Could not verify npm publish status (network or npm not available)',
+      };
+    }
+    return { name: 'npm publish', status: 'PASS', detail: 'No package.json found' };
   }
 
   /**
@@ -403,16 +439,36 @@ export class VerifyGate {
   private verifyGitPush(): VerifyCheck {
     try {
       const { execSync } = require('child_process');
-      const result = execSync('git push --dry-run 2>&1', {
+
+      // Use git ls-remote to verify remote HEAD matches local
+      const localHead = execSync('git rev-parse HEAD 2>&1', {
         cwd: this.workspaceRoot,
         encoding: 'utf-8',
         stdio: ['pipe', 'pipe', 'ignore'],
-      });
+      }).trim();
 
-      if (result.includes('Everything up-to-date')) {
-        return { name: 'git push', status: 'PASS', detail: 'Already up to date' };
+      const remoteHead = execSync('git ls-remote origin HEAD 2>&1', {
+        cwd: this.workspaceRoot,
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'ignore'],
+        timeout: 5000,
+      }).split('\t')[0]?.trim();
+
+      if (remoteHead && remoteHead === localHead) {
+        return {
+          name: 'git push',
+          status: 'PASS',
+          detail: 'Remote HEAD matches local',
+        };
       }
-      return { name: 'git push', status: 'PASS' };
+
+      return {
+        name: 'git push',
+        status: 'WARN',
+        detail: remoteHead
+          ? `Remote HEAD differs from local`
+          : 'Could not resolve remote HEAD',
+      };
     } catch {
       return {
         name: 'git push',
@@ -420,6 +476,67 @@ export class VerifyGate {
         detail: 'Could not verify push status',
       };
     }
+  }
+
+  /**
+   * Verify that claimed result is valid JSON (if applicable).
+   */
+  private verifyResultFormat(
+    claimedResult?: { files?: string[]; published?: boolean; result?: unknown },
+  ): VerifyCheck {
+    if (!claimedResult?.result) {
+      return { name: 'Result format', status: 'PASS', detail: 'No result to check' };
+    }
+
+    const result = claimedResult.result;
+    if (typeof result === 'string') {
+      // Check if it looks like JSON
+      const trimmed = result.trim();
+      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+          JSON.parse(trimmed);
+          return { name: 'Result format', status: 'PASS' };
+        } catch {
+          return {
+            name: 'Result format',
+            status: 'FAIL',
+            detail: 'Result looks like JSON but is not valid JSON',
+          };
+        }
+      }
+    }
+
+    return { name: 'Result format', status: 'PASS' };
+  }
+
+  /**
+   * Verify that the result is not empty when it shouldn't be.
+   */
+  private verifyNonEmptyResult(
+    claimedResult?: { files?: string[]; published?: boolean; result?: unknown },
+  ): VerifyCheck {
+    if (!claimedResult?.result) {
+      return { name: 'Result non-empty', status: 'PASS', detail: 'No result to check' };
+    }
+
+    const result = claimedResult.result;
+    if (typeof result === 'string' && result.trim().length === 0) {
+      return {
+        name: 'Result non-empty',
+        status: 'WARN',
+        detail: 'Result is empty — possible hallucination',
+      };
+    }
+
+    if (Array.isArray(result) && result.length === 0) {
+      return {
+        name: 'Result non-empty',
+        status: 'WARN',
+        detail: 'Result is empty array',
+      };
+    }
+
+    return { name: 'Result non-empty', status: 'PASS' };
   }
 
   /**
