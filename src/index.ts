@@ -4,3 +4,6 @@ export { SchemaGate, SchemaRule } from './guard/schema-gate';
 export { RiskGate, RiskThresholds, DEFAULT_RISK_THRESHOLDS, ToolRiskProfile, ImpactLevel, SensitivityLevel } from './guard/risk-gate';
 export { SnapshotGate, VerifyGate, SnapshotScope } from './guard/snapshot-verify';
 export { AuditLog } from './guard/audit-log';
+export { WorkingMemory, WorkingMemoryState } from './memory/working';
+export { EpisodicMemory } from './memory/episodic';
+export { SemanticMemoryStore } from './memory/semantic';
