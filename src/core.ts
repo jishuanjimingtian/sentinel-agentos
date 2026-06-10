@@ -353,7 +353,7 @@ export class AgentOS {
     const lines = [
       '=== AgentOS Status Report ===',
       '',
-      `Quality Score: ${Math.round(profile.overallScore * 100)}/100 ${profile.trends.improving ? '📈' : '📉'}`,
+      `Quality Score: ${Math.round(profile.overallScore)}/100 ${profile.trends.improving ? '📈' : '📉'}`,
       `Total Operations: ${profile.totalOps} (${profile.trends.recentOps} in last 24h)`,
       '',
       '--- Breakdown ---',

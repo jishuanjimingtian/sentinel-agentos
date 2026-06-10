@@ -74,18 +74,18 @@ export class AgentProfiler {
     // Pre-exec scores
     const preExecScore = this.average(
       this.preMetrics.map((m) =>
-        (m.paramQuality.score + m.contextUtilization.score) / 2,
+        ((m.paramQuality.score + m.contextUtilization.score) / 2) * 100,
       ),
     );
 
     // Runtime scores
     const runtimeScore = this.average(
-      this.runMetrics.map((m) => m.adaptiveScore),
+      this.runMetrics.map((m) => m.adaptiveScore * 100),
     );
 
     // Post-exec scores
     const postExecScore = this.average(
-      this.postMetrics.map((m) => m.outcomeScore),
+      this.postMetrics.map((m) => m.outcomeScore * 100),
     );
 
     // User satisfaction
@@ -94,10 +94,10 @@ export class AgentProfiler {
 
     // Overall: weighted
     const overallScore = Math.round(
-      preExecScore * 20 +
-      runtimeScore * 25 +
-      postExecScore * 30 +
-      satisfactionScore * 25,
+      preExecScore * 0.2 +
+      runtimeScore * 0.25 +
+      postExecScore * 0.3 +
+      satisfactionScore * 0.25,
     );
 
     // Recent trend
@@ -108,10 +108,10 @@ export class AgentProfiler {
 
     const recentScore = recentPre.length > 0
       ? Math.round(
-        this.average(recentPre.map((m) => (m.paramQuality.score + m.contextUtilization.score) / 2)) * 20 +
-        this.average(recentRun.map((m) => m.adaptiveScore)) * 25 +
-        this.average(recentPost.map((m) => m.outcomeScore)) * 30 +
-        satisfactionScore * 25,
+        this.average(recentPre.map((m) => (m.paramQuality.score + m.contextUtilization.score) / 2)) * 100 * 0.2 +
+        this.average(recentRun.map((m) => m.adaptiveScore)) * 100 * 0.25 +
+        this.average(recentPost.map((m) => m.outcomeScore)) * 100 * 0.3 +
+        satisfactionScore * 0.25,
       )
       : overallScore;
 
@@ -140,7 +140,7 @@ export class AgentProfiler {
     }
 
     return {
-      overallScore: Math.round(overallScore) / 100, // Normalize back to 0-1
+      overallScore: overallScore, // 0-100
       totalOps,
       breakdown: {
         preExec: Math.round(preExecScore * 100) / 100,
