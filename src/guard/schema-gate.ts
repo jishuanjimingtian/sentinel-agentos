@@ -1,4 +1,4 @@
-import { SchemaCheck, SchemaError } from '../types';
+import { SchemaCheck, SchemaError, GuardConfig } from '../types';
 
 /**
  * A schema rule defines what a valid tool parameter input looks like.
@@ -29,6 +29,17 @@ export interface SchemaRule {
  */
 export class SchemaGate {
   private rules: Map<string, SchemaRule> = new Map();
+
+  constructor(config?: GuardConfig) {
+    if (config?.schema) {
+      for (const rule of config.schema.rules) {
+        this.registerRule({
+          tool: rule.tool,
+          required: rule.required,
+        });
+      }
+    }
+  }
 
   /** Register a schema rule for a tool */
   registerRule(rule: SchemaRule): void {

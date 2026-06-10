@@ -7,3 +7,6 @@ export { AuditLog } from './guard/audit-log';
 export { WorkingMemory, WorkingMemoryState } from './memory/working';
 export { EpisodicMemory } from './memory/episodic';
 export { SemanticMemoryStore } from './memory/semantic';
+export { PreExecEvaluator, RuntimeEvaluator, PostExecEvaluator } from './evaluator/exec-evaluator';
+export { ImplicitFeedbackEngine } from './evaluator/feedback';
+export { AgentProfiler, AgentProfile } from './evaluator/profiler';

@@ -26,13 +26,19 @@ export interface RiskScore {
 }
 
 export interface GuardConfig {
-  schemaGate: boolean;
-  riskGate: {
+  schema?: { rules: SchemaRule[] };
+  riskGate?: {
     autoApprove: number;
     notify: number;
     confirm: number;
     deny: number;
   };
+}
+
+export interface SchemaRule {
+  tool: string;
+  required: string[];
+  forbidden?: string[];
 }
 
 // === Memory Layer Types ===
@@ -118,38 +124,58 @@ export interface LearnedRule {
 // === Evaluator Types ===
 
 export type SignalType =
-  | 'user_immediate_reply'
-  | 'user_deleted_agent_code'
-  | 'user_modified_agent_output'
+  | 'user_deleted_code'
+  | 'user_interrupted'
+  | 'user_provided_correction'
+  | 'user_modified_output'
   | 'user_repeated_instruction'
-  | 'user_paused_agent'
-  | 'user_continued_session';
+  | 'user_ignored_result'
+  | 'user_silence_then_praise'
+  | 'user_immediate_continue'
+  | 'agent_self_corrected'
+  | 'user_explicit_approval'
+  | 'user_used_result'
+  | 'user_shared_output';
 
 export interface ImplicitFeedback {
+  id: string;
+  timestamp: number;
   signal: SignalType;
   strength: number;
-  context: string;
-  timestamp: number;
+  confidence: number;
+  sessionId: string;
+  operationId?: string;
+  source: string;
 }
 
 export interface PreExecMetrics {
-  schemaPassRate: number;
-  riskDistribution: Record<string, number>;
-  paramQuality: number;
+  timestamp: number;
+  toolName: string;
+  schemaCheck: SchemaCheck;
+  riskScore: RiskScore;
+  paramQuality: { score: number; observations: string[] };
+  contextUtilization: { score: number; patterns: string[] };
 }
 
 export interface RuntimeMetrics {
-  retryRate: number;
-  selfCorrectionCount: number;
-  timeoutRate: number;
-  toolSelectionAccuracy: number;
+  retryCount: number;
+  selfCorrected: boolean;
+  hadTimeout: boolean;
+  toolSuccess: boolean;
+  toolSelectionMatch?: boolean;
+  adaptiveScore: number;
+  durationMs: number;
 }
 
 export interface PostExecMetrics {
-  verifyPassRate: number;
-  userAcceptance: number;
-  resultUtilization: number;
-  taskCompletion: number;
+  verifyPassed: boolean;
+  verifyScore: number;
+  userAccepted: boolean;
+  userEditRate: number;
+  resultUtilized: boolean;
+  outcomeScore: number;
+  healthy: boolean;
+  diffLinesChanged?: number;
 }
 
 // === Audit Types ===
@@ -208,13 +234,11 @@ export interface RollbackInfo {
 // === AgentOS Core Types ===
 
 export interface AgentOSConfig {
-  guard: GuardConfig;
-  memory: {
-    working: { maxTokens: number };
-    episodic: { maxSizeKb: number };
-    semantic: { enabled: boolean };
-  };
-  evaluator?: {
-    implicitFeedbackEnabled: boolean;
+  workspaceRoot?: string;
+  maxWorkingTokens?: number;
+  maxEpisodicSizeKb?: number;
+  guardConfig?: GuardConfig;
+  evaluatorConfig?: {
+    implicitFeedbackEnabled?: boolean;
   };
 }
