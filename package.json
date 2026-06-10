@@ -2,7 +2,16 @@
   "name": "@sentinel-agentos/core",
   "version": "0.1.0",
   "description": "Sentinel AgentOS — 确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进",
-  "keywords": ["agent", "ai-agent", "guard", "safety", "memory", "evaluation", "sentinel", "agentos"],
+  "keywords": [
+    "agent",
+    "ai-agent",
+    "guard",
+    "safety",
+    "memory",
+    "evaluation",
+    "sentinel",
+    "agentos"
+  ],
   "license": "MIT",
   "author": "Annie-Bot",
   "repository": {
@@ -11,7 +20,14 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
-  "files": ["dist/", "README.md", "LICENSE"],
+  "bin": {
+    "sentinel-agentos": "./dist/cli.js"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -25,6 +41,8 @@
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
     "@types/jest": "^29.5.0",
     "@types/node": "^20.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
@@ -38,5 +56,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1"
   }
 }

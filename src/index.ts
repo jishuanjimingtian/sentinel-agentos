@@ -20,3 +20,10 @@ export { ImplicitFeedbackEngine } from './evaluator/feedback';
 export { AgentProfiler } from './evaluator/profiler';
 export type { AgentProfile } from './evaluator/profiler';
 export { AgentOSAPI } from './api';
+
+// --- Integration Layer ---
+export { createServer } from './server';
+export { wrapAgent } from './middleware/wrapper';
+export type { WrappedAgent } from './middleware/wrapper';
+export { sentinelPlugin } from './middleware/openclaw';
+export type { OpenClawPlugin } from './middleware/openclaw';
