@@ -127,11 +127,12 @@ async function main() {
     case 'server': {
       const port = parseInt(opts.port ?? '3300', 10);
       const host = opts.host ?? '127.0.0.1';
+      const token = opts.token;
 
       // Dynamic import to avoid requiring express at CLI startup
       try {
         const { createServer } = await import('./server');
-        const server = createServer({ port, host });
+        const server = createServer({ port, host, apiToken: token });
         await server.start();
         console.log('Press Ctrl+C to stop');
 

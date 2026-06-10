@@ -36,15 +36,39 @@ import type { SchemaRule } from './guard/schema-gate';
 type ServerConfig = {
   port: number;
   host?: string;
+  /** API token for authentication. If set, all requests must include `Authorization: Bearer <token>` */
+  apiToken?: string;
 };
 
 export function createServer(config?: Partial<ServerConfig>) {
   const port = config?.port ?? 3300;
   const host = config?.host ?? '127.0.0.1';
+  const apiToken = config?.apiToken;
 
   const app = express();
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
+
+  // ---- API Token Authentication ----
+  if (apiToken) {
+    app.use((req: Request, res: Response, next: NextFunction) => {
+      // Skip health check
+      if (req.path === '/health') {
+        next();
+        return;
+      }
+
+      const auth = req.headers.authorization;
+      const token = auth?.startsWith('Bearer ') ? auth.slice(7) : null;
+
+      if (token !== apiToken) {
+        res.status(401).json({ error: 'Unauthorized: invalid or missing API token' });
+        return;
+      }
+
+      next();
+    });
+  }
 
   // Each request gets its own AgentOS tracker, but we keep one base instance
   // for shared memory (semantic/episodic) and accumulated profile.

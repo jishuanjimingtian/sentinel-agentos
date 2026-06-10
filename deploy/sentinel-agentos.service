@@ -1,0 +1,39 @@
+# Sentinel AgentOS systemd service
+# 
+# Install:
+#   sudo cp sentinel-agentos.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable sentinel-agentos
+#   sudo systemctl start sentinel-agentos
+#
+# Logs:
+#   sudo journalctl -u sentinel-agentos -f
+
+[Unit]
+Description=Sentinel AgentOS HTTP Server
+After=network.target
+
+[Service]
+Type=simple
+User=nobody
+Restart=always
+RestartSec=5
+
+Environment=SENTINEL_PORT=3300
+Environment=SENTINEL_TOKEN=change-me-to-a-secure-random-string
+Environment=SENTINEL_HOST=0.0.0.0
+Environment=NODE_ENV=production
+
+WorkingDirectory=/opt/sentinel-agentos
+ExecStart=/usr/bin/node dist/server.js --port ${SENTINEL_PORT}
+
+# Security hardening
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/sentinel-agentos/logs
+ReadWritePaths=/opt/sentinel-agentos/.agentos
+
+[Install]
+WantedBy=multi-user.target
