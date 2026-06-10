@@ -1,20 +1,20 @@
-# AgentOS — AI Agent 操作系统 · AI Agent Operating System
+# Sentinel AgentOS — AI Agent 操作系统 · AI Agent Operating System
 
 > **确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进。**
 > *Deterministic Guard Layer + Layered Memory + Automated Evaluation — making any Agent reliable, auditable, and self-improving.*
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/tests-99%2F99-brightgreen)](https://github.com/jishuanjimingtian/agentos/actions)
+[![Tests](https://img.shields.io/badge/tests-99%2F99-brightgreen)](https://github.com/jishuanjimingtian/sentinel-agentos/actions)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 
 ---
 
-## 🤔 为什么需要 AgentOS · Why AgentOS
+## 🤔 为什么需要 Sentinel AgentOS · Why Sentinel AgentOS
 
 AI Agent 面临五大核心问题，现有框架都没能真正解决。
 *AI Agents face five critical problems that no existing framework truly solves.*
 
-| 痛点 · Pain | 现状 · Status Quo | AgentOS 方案 · Solution |
+| 痛点 · Pain | 现状 · Status Quo | Sentinel AgentOS 方案 · Solution |
 |------|------|-------------|
 | 🔴 **幻觉导致错误操作** · *Hallucinated operations* | Prompt 里说"不要删文件"——这是愿望，不是约束 · *"Please don't delete files" — that's a wish, not a constraint* | Guard 层确定性校验，不依赖 LLM 判断 · *Deterministic Guard checks, zero LLM dependency* |
 | 🔴 **越权/危险操作** · *Over-privileged ops* | 无分级控制，要么全禁要么全放 · *All-or-nothing access control* | Risk Gate 四维数学公式，0-100 自动分级 · *4-dimensional risk formula with auto-thresholding* |
@@ -28,14 +28,14 @@ AI Agent 面临五大核心问题，现有框架都没能真正解决。
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        AgentOS 架构                              │
+│                        Sentinel AgentOS 架构                              │
 │                                                                  │
 │  任意 Agent 框架 · Any Agent Framework                           │
 │  (OpenClaw / LangChain / CrewAI / 自研 · Custom)                 │
 │                              │                                   │
 │                              ▼                                   │
 │  ┌───────────────────────────────────────────────────────────┐  │
-│  │                    AgentOS 内核 · Kernel                    │  │
+│  │                    Sentinel AgentOS 内核 · Kernel                    │  │
 │  │                                                             │  │
 │  │  ┌─────────┐   ┌──────────┐   ┌────────────┐              │  │
 │  │  │ Guard   │   │ Memory   │   │ Evaluator  │              │  │
@@ -82,7 +82,7 @@ AI Agent 面临五大核心问题，现有框架都没能真正解决。
 | 类比 · Analogy | 对应 · Implementation |
 |------|------|
 | 应用程序 · Applications | 任意 Agent 框架 · Any Agent Framework |
-| 操作系统 · Operating System | AgentOS |
+| 操作系统 · Operating System | Sentinel AgentOS |
 | 内核 · Kernel | Schema Gate + Risk Gate（确定性代码，零 LLM） |
 | 文件系统 · File System | 分层 Memory Store |
 | 日志系统 · Logging | Audit Log（不可篡改，支持回滚 · *immutable, supports rollback*） |
@@ -190,7 +190,7 @@ Current session →  Cross-session    →  Permanent knowledge
 *Auto-injects relevant context at every new session:*
 
 ```
-[AgentOS Memory Context]
+[Sentinel AgentOS Memory Context]
 你正在帮助用户"老板"处理项目"coderev"。
 You are helping user "Boss" with project "coderev".
 上次会话讨论了 Guard 层设计。
@@ -233,7 +233,7 @@ Pre-exec 评估  →  Runtime 评估  →  Post-exec 评估
 #### Agent 质量画像 · Quality Profile
 
 ```
-=== AgentOS Status Report ===
+=== Sentinel AgentOS Status Report ===
 
 Quality Score: 85/100 📈
 Total Operations: 156 (12 in last 24h)
@@ -261,14 +261,14 @@ Total: 156 | Failures: 2 | High-Risk: 3
 ## 📦 安装 · Installation
 
 ```bash
-npm install @agentos/core
+npm install @Sentinel AgentOS/core
 ```
 
 ⚠️ **npm 包尚未发布 · *not yet published***，当前从源码使用 · *use from source:*
 
 ```bash
-git clone git@github.com:jishuanjimingtian/agentos.git
-cd agentos
+git clone git@github.com:jishuanjimingtian/Sentinel AgentOS.git
+cd Sentinel AgentOS
 npm install
 npm test        # 99 tests, all passing · 99个测试全部通过
 npm run build   # 编译到 dist/
@@ -281,7 +281,7 @@ npm run build   # 编译到 dist/
 ### 基础用法 · Basic
 
 ```typescript
-import { AgentOS } from 'agentos';
+import { AgentOS } from 'sentinel-agentos';
 
 const aos = new AgentOS({
   workspaceRoot: process.cwd(),
@@ -341,7 +341,7 @@ console.log(aos.statusReport());
 ### 接入现有 Agent 框架 · Integrate with any Agent framework
 
 ```typescript
-import { AgentOS } from 'agentos';
+import { AgentOS } from 'sentinel-agentos';
 
 const aos = new AgentOS({ workspaceRoot: process.cwd() });
 
@@ -379,7 +379,7 @@ async function safeToolCall(toolName: string, params: Record<string, unknown>) {
 ### 沙箱 · Sandbox
 
 ```typescript
-import { SandboxExecutor } from 'agentos';
+import { SandboxExecutor } from 'sentinel-agentos';
 
 const sandbox = new SandboxExecutor({
   mode: 'sandbox',
@@ -403,7 +403,7 @@ await sandbox.execute('exec', { command: 'npm test', cwd: process.cwd() });
 ### API 层 · SDK API
 
 ```typescript
-import { AgentOS, AgentOSAPI } from 'agentos';
+import { Sentinel AgentOS, Sentinel AgentOSAPI } from 'Sentinel AgentOS';
 
 const api = new AgentOSAPI(new AgentOS());
 
@@ -464,7 +464,7 @@ aos1.endSession('session_1');
 // Session 2: 自动注入 · Auto-injected
 const aos2 = new AgentOS();
 console.log(aos2.injectContext());
-// [AgentOS Semantic Memory]
+// [Sentinel AgentOS Semantic Memory]
 // ## Preferences
 // - language: "zh-CN"
 // ## Learned Rules · 学习到的规则
@@ -527,10 +527,10 @@ Tests:       99 passed, 99 total
 ## ⚠️ 常见问题 · FAQ
 
 <details>
-<summary><b>Q: AgentOS 和 LangChain / CrewAI 什么关系？</b></summary>
+<summary><b>Q: Sentinel AgentOS 和 LangChain / CrewAI 什么关系？</b></summary>
 
-AgentOS **不是竞争对手**，是基础设施层。LangChain/CrewAI 是 Agent 框架，AgentOS 是给它们提供安全、记忆、评估的操作系统。可以增量接入任何框架。
-*Not a competitor — infrastructure. LangChain/CrewAI are agent frameworks; AgentOS provides safety + memory + evaluation as an OS layer. Incrementally pluggable into any framework.*
+Sentinel AgentOS **不是竞争对手**，是基础设施层。LangChain/CrewAI 是 Agent 框架，Sentinel AgentOS 是给它们提供安全、记忆、评估的操作系统。可以增量接入任何框架。
+*Not a competitor — infrastructure. LangChain/CrewAI are agent frameworks; Sentinel AgentOS provides safety + memory + evaluation as an OS layer. Incrementally pluggable into any framework.*
 </details>
 
 <details>
@@ -543,8 +543,8 @@ LLM 做安全判断 = 用问题制造者来解决问题。Schema 校验是纯工
 <details>
 <summary><b>Q: Memory 层和 RAG 有什么区别？ · How is this different from RAG?</b></summary>
 
-RAG = 把对话扔进向量库做检索。AgentOS Memory = 人脑模型：Working（当前会话）、Episodic（自动评分+压缩）、Semantic（提炼后的永久知识）。最重要的是：**AgentOS 会自动写入记忆，不需要 Agent 手动管理**。
-*RAG = dump conversation into vector DB. AgentOS Memory = brain model. Most importantly: **AgentOS auto-writes memory; agents don't need to manage it manually.***
+RAG = 把对话扔进向量库做检索。Sentinel AgentOS Memory = 人脑模型：Working（当前会话）、Episodic（自动评分+压缩）、Semantic（提炼后的永久知识）。最重要的是：**Sentinel AgentOS 会自动写入记忆，不需要 Agent 手动管理**。
+*RAG = dump conversation into vector DB. Sentinel AgentOS Memory = brain model. Most importantly: **Sentinel AgentOS auto-writes memory; agents don't need to manage it manually.***
 </details>
 
 <details>
@@ -579,7 +579,7 @@ v1.0 沙箱基于环境变量 + 路径校验 + 命令模式检测，不是容器
 <summary><b>Q: 怎么看 Audit Log？ · How to view audit logs?</b></summary>
 
 ```bash
-cat .agentos/audit.jsonl | jq '.'
+cat .Sentinel AgentOS/audit.jsonl | jq '.'
 ```
 
 或通过 API · *or via API:*
@@ -610,7 +610,7 @@ const entries = api.auditQuery({ minScore: 3.0 }); // 高风险操作 · High-ri
 ```
 src/
 ├── index.ts               # 导出入口 · Exports (30+)
-├── core.ts                 # AgentOS 主循环 · Main loop
+├── core.ts                 # Sentinel AgentOS 主循环 · Main loop
 ├── api.ts                  # SDK 协议层 · API layer (25+ methods)
 ├── types/index.ts          # 完整类型定义 · Type definitions
 ├── guard/

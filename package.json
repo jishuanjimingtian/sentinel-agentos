@@ -1,13 +1,13 @@
 {
-  "name": "@agentos/core",
+  "name": "@sentinel-agentos/core",
   "version": "0.1.0",
-  "description": "AgentOS — Deterministic Guard Layer + Layered Memory + Automated Evaluation for any AI Agent",
-  "keywords": ["agent", "ai-agent", "guard", "safety", "memory", "evaluation"],
+  "description": "Sentinel AgentOS — 确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进",
+  "keywords": ["agent", "ai-agent", "guard", "safety", "memory", "evaluation", "sentinel", "agentos"],
   "license": "MIT",
   "author": "Annie-Bot",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jishuanjimingtian/agentos"
+    "url": "https://github.com/jishuanjimingtian/sentinel-agentos"
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
