@@ -135,55 +135,44 @@ module.exports = {
     return { passed: true, risk: 'auto' };
   },
 
-  // ── 执行后完整审计 ──
+  // ── 执行后审计（异步 AgentOS，不阻塞回复）──
   postCheck(toolName, params, result) {
-    const sid = `s${global.__sentinel_session_id}_op${++opCounter}`;
+    // 轻量审计（纯内存 + 5ms I/O，不调 git）
+    const entry = {
+      id: `${++opCounter}`,
+      ts: new Date().toISOString(),
+      sessionId: `s${global.__sentinel_session_id}`,
+      tool: toolName,
+      params: typeof params === 'string' ? params.slice(0, 200) : JSON.stringify(params || {}).slice(0, 200),
+      result: String(result || '').slice(0, 100),
+    };
+    aos.memory.working.addMessage('tool', `${toolName}: ${entry.params}`);
+    try {
+      if (!fs.existsSync(AUDIT_DIR)) fs.mkdirSync(AUDIT_DIR, { recursive: true });
+      fs.appendFileSync(path.join(AUDIT_DIR, 'audit.jsonl'), JSON.stringify(entry) + '\n');
+    } catch {}
 
-    // 记录到 Working Memory
-    aos.memory.working.addMessage('tool', `${toolName}: ${JSON.stringify(params || {}).slice(0, 200)}`);
-
-    // AgentOS 完整流水线
-    const { preExec, snapshot } = aos.executePipeline({
-      sessionId: sid, agentId: 'openclaw', toolName, parameters: params || {},
+    // AgentOS 完整审计放到 next tick，不阻塞回复（230ms git → 后台）
+    setImmediate(() => {
+      try {
+        const sid = `s${global.__sentinel_session_id}_op${opCounter}`;
+        const { preExec, snapshot } = aos.executePipeline({
+          sessionId: sid, agentId: 'openclaw', toolName, parameters: params || {},
+        });
+        aos.completeExecution({
+          sessionId: sid, agentId: 'openclaw', toolName,
+          toolParameters: params || {}, toolResult: result ?? null,
+          snapshot, startTime: Date.now() - 500, endTime: Date.now(),
+          retryCount: 0, wasSelfCorrected: false, hadTimeout: false,
+          userAccepted: true, userProvidedEdit: false, resultWasUsed: true,
+        });
+        if (toolName === 'exec' && params?.command) {
+          aos.memory.episodic.record('tool_call', String(params.command), ['exec'], []);
+        }
+      } catch {}
     });
 
-    const t = Date.now();
-    try {
-      const ret = aos.completeExecution({
-        sessionId: sid, agentId: 'openclaw', toolName,
-        toolParameters: params || {}, toolResult: result ?? null,
-        snapshot, startTime: t - 500, endTime: t,
-        retryCount: 0, wasSelfCorrected: false, hadTimeout: false,
-        userAccepted: true, userProvidedEdit: false, resultWasUsed: true,
-      });
-
-      // 记录情景记忆
-      if (toolName === 'exec' && params.command) {
-        aos.memory.episodic.record('tool_call', params.command, ['exec'], []);
-      }
-
-      // 持久化审计
-      try {
-        if (!fs.existsSync(AUDIT_DIR)) fs.mkdirSync(AUDIT_DIR, { recursive: true });
-        fs.appendFileSync(path.join(AUDIT_DIR, 'audit.jsonl'),
-          JSON.stringify(ret.auditEntry) + '\n');
-      } catch {}
-
-      return {
-        auditId: ret.auditEntry.id,
-        verify: ret.postExec.verifyPassed ? 'PASS' : 'FAIL',
-        risk: ret.runtime.adaptiveScore,
-        profile: ret.profile.overallScore,
-      };
-    } catch (err) {
-      // Audit 降级：即使 AgentOS 抛错，也记录轻量审计
-      try {
-        if (!fs.existsSync(AUDIT_DIR)) fs.mkdirSync(AUDIT_DIR, { recursive: true });
-        fs.appendFileSync(path.join(AUDIT_DIR, 'audit.jsonl'),
-          JSON.stringify({ ts: new Date().toISOString(), tool: toolName, error: err.message }) + '\n');
-      } catch {}
-      return { auditId: null, verify: 'ERROR', error: err.message };
-    }
+    return { auditId: entry.id, verify: 'QUEUED' };
   },
 
   // ── 查看审计 ──
