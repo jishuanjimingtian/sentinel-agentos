@@ -52,8 +52,8 @@ export function createServer(config?: Partial<ServerConfig>) {
   // ---- API Token Authentication ----
   if (apiToken) {
     app.use((req: Request, res: Response, next: NextFunction) => {
-      // Skip health check
-      if (req.path === '/health') {
+      // Skip health check and dashboard (static page)
+      if (req.path === '/health' || req.path === '/dashboard' || req.path.startsWith('/dashboard/')) {
         next();
         return;
       }
@@ -78,6 +78,29 @@ export function createServer(config?: Partial<ServerConfig>) {
 
   app.get('/health', (_req: Request, res: Response) => {
     res.json({ ok: true, uptime: process.uptime() });
+  });
+
+  // ---- Dashboard ----
+
+  const dashboardHtml = require('fs').readFileSync(
+    require('path').join(__dirname, 'dashboard.html'), 'utf-8'
+  );
+
+  app.get('/dashboard', (_req: Request, res: Response) => {
+    res.type('html').send(dashboardHtml);
+  });
+
+  // Rich report for dashboard
+  app.get('/pipeline/report', (_req: Request, res: Response) => {
+    const r = baseAos.getReport();
+    const audit = baseAos.guard.audit.query({ limit: 20 });
+    res.json({
+      ...r,
+      uptime: `${Math.floor(process.uptime())}s`,
+      timeline: audit.map(e => ({
+        tool: e.toolName, ts: e.completedAt, verify: e.verifyGate.status, risk: e.riskGate.score,
+      })),
+    });
   });
 
   // ---- Pipeline: Pre-exec ----

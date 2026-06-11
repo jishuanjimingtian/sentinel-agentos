@@ -282,6 +282,23 @@ export class AgentOS {
   }
 
   /**
+   * Get a JSON report for dashboard consumption.
+   */
+  getReport(): Record<string, unknown> {
+    const profile = this.getProfile();
+    const audit = this.getAuditStats();
+    return {
+      quality: { overallScore: Math.round(profile.overallScore), ...profile.breakdown },
+      audit: { ...audit },
+      satisfaction: profile.breakdown.userSatisfaction || 0,
+      workingMemory: { messages: this.memory.working.getState().recentMessages.length },
+      episodicEvents: this.memory.episodic.count || 0,
+      warnings: profile.warnings,
+      strengths: profile.strengths,
+    };
+  }
+
+  /**
    * Inject memory context at session startup.
    *
    * Call this at the beginning of every session to load
