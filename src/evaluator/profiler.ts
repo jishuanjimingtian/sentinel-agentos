@@ -15,9 +15,9 @@ export interface AgentProfile {
   totalOps: number;
   /** Score breakdown by metric category */
   breakdown: {
-    preExec: number; // Average param + context quality
-    runtime: number; // Average adaptive score
-    postExec: number; // Average outcome score
+    preExec: number | null; // Average param + context quality (null = no data)
+    runtime: number | null; // Average adaptive score (null = no data)
+    postExec: number | null; // Average outcome score (null = no data)
     userSatisfaction: number; // From implicit feedback (-1..1 mapped to 0..100)
   };
   /** Trend data */
@@ -143,12 +143,12 @@ export class AgentProfiler {
     }
 
     return {
-      overallScore: overallScore, // 0-100
+      overallScore: Number.isNaN(overallScore) ? 50 : overallScore, // 0-100, default 50 if no data
       totalOps,
       breakdown: {
-        preExec: Math.round(preExecScore * 100) / 100,
-        runtime: Math.round(runtimeScore * 100) / 100,
-        postExec: Math.round(postExecScore * 100) / 100,
+        preExec: totalOps > 0 ? Math.round(preExecScore * 100) / 100 : null,
+        runtime: totalOps > 0 ? Math.round(runtimeScore * 100) / 100 : null,
+        postExec: totalOps > 0 ? Math.round(postExecScore * 100) / 100 : null,
         userSatisfaction: Math.round(satisfactionScore * 100) / 100,
       },
       trends: {
