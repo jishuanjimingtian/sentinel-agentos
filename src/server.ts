@@ -82,9 +82,16 @@ export function createServer(config?: Partial<ServerConfig>) {
 
   // ---- Dashboard ----
 
-  const dashboardHtml = require('fs').readFileSync(
-    require('path').join(__dirname, 'dashboard.html'), 'utf-8'
-  );
+  const dashboardPath = require('path').join(__dirname, 'dashboard.html');
+  let dashboardHtml = '<h1>Dashboard unavailable</h1>';
+  try {
+    dashboardHtml = require('fs').readFileSync(dashboardPath, 'utf-8');
+  } catch {
+    // dashboard.html not in dist — use inline fallback
+    dashboardHtml = `<!DOCTYPE html>
+<html><head><title>Sentinel AgentOS</title><style>body{font-family:system-ui;max-width:800px;margin:2rem auto;padding:1rem;background:#0d1117;color:#c9d1d9}h1{color:#58a6ff}pre{background:#161b22;padding:1rem;border-radius:6px}</style></head>
+<body><h1>Sentinel AgentOS Dashboard</h1><p>Dashboard running. Visit <a href="/pipeline/report">/pipeline/report</a> or <a href="/pipeline/profile">/pipeline/profile</a> for data.</p></body></html>`;
+  }
 
   app.get('/dashboard', (_req: Request, res: Response) => {
     res.type('html').send(dashboardHtml);
