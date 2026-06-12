@@ -250,3 +250,27 @@ export interface AgentOSConfig {
     implicitFeedbackEnabled?: boolean;
   };
 }
+
+// === Error Codes ===
+
+export enum ErrorCode {
+  /** Schema validation failure */
+  E_SCHEMA = 'E_SCHEMA',
+  /** Risk gate blocked */
+  E_RISK = 'E_RISK',
+  /** Snapshot failed (IO/permissions) */
+  E_SNAPSHOT = 'E_SNAPSHOT',
+  /** Verify gate failed */
+  E_VERIFY = 'E_VERIFY',
+  /** Audit log write failed */
+  E_AUDIT_IO = 'E_AUDIT_IO',
+  /** Tool execution error */
+  E_EXEC = 'E_EXEC',
+  /** Unknown/internal error */
+  E_INTERNAL = 'E_INTERNAL',
+}
+
+export interface SentinelError extends Error {
+  code: ErrorCode;
+  details?: unknown;
+}

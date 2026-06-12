@@ -6,27 +6,18 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
-/**
- * Generate a unique audit entry ID.
- */
 function generateAuditId(): string {
   return `audit_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 }
 
-/**
- * Audit Log — append-only, immutable operation record.
- *
- * Every tool call that passes through AgentOS Guard gets logged here.
- * The log is an append-only JSONL file — entries are never deleted or modified.
- *
- * In production: use SQLite WAL or a remote append-only service.
- * MVP: flat JSONL file.
- */
 export class AuditLog {
   private logPath: string;
   private schemaGate: SchemaGate;
   private riskGate: RiskGate;
   private snapshotGate: SnapshotGate;
+  // In-memory entries + session index for fast lookups
+  private entries: AuditEntry[] = [];
+  private sessionIndex: Map<string, AuditEntry[]> = new Map();
 
   constructor(
     workspaceRoot: string,
@@ -37,13 +28,9 @@ export class AuditLog {
     this.schemaGate = schemaGate;
     this.riskGate = riskGate;
     this.snapshotGate = new SnapshotGate(workspaceRoot);
+    this.loadFromDisk();
   }
 
-  /**
-   * Record a tool call in the audit log.
-   *
-   * Called AFTER execution completes. Returns the full audit entry.
-   */
   record(options: {
     sessionId: string;
     agentId: string;
@@ -82,9 +69,6 @@ export class AuditLog {
     return entry;
   }
 
-  /**
-   * Query audit entries by filter.
-   */
   query(filter: {
     sessionId?: string;
     toolName?: string;
@@ -93,32 +77,35 @@ export class AuditLog {
     maxScore?: number;
     limit?: number;
   } = {}): AuditEntry[] {
-    const entries = this.readAll();
-    let results = entries;
-
-    if (filter.sessionId) {
-      results = results.filter((e) => e.sessionId === filter.sessionId);
-    }
-    if (filter.toolName) {
-      results = results.filter((e) => e.toolName === filter.toolName);
-    }
-    if (filter.verifyStatus) {
-      results = results.filter((e) => e.verifyGate.status === filter.verifyStatus);
-    }
-    if (filter.minScore !== undefined) {
-      results = results.filter((e) => e.riskGate.score >= filter.minScore!);
-    }
-    if (filter.maxScore !== undefined) {
-      results = results.filter((e) => e.riskGate.score <= filter.maxScore!);
+    // Use session index for session-only queries (O(1) lookup)
+    let results: AuditEntry[];
+    if (filter.sessionId && !filter.toolName && !filter.verifyStatus &&
+        filter.minScore === undefined && filter.maxScore === undefined) {
+      results = this.sessionIndex.get(filter.sessionId) ?? [];
+    } else {
+      // Fall back to full scan with filters
+      results = this.entries;
+      if (filter.sessionId) {
+        results = results.filter((e) => e.sessionId === filter.sessionId);
+      }
+      if (filter.toolName) {
+        results = results.filter((e) => e.toolName === filter.toolName!);
+      }
+      if (filter.verifyStatus) {
+        results = results.filter((e) => e.verifyGate.status === filter.verifyStatus);
+      }
+      if (filter.minScore !== undefined) {
+        results = results.filter((e) => e.riskGate.score >= filter.minScore!);
+      }
+      if (filter.maxScore !== undefined) {
+        results = results.filter((e) => e.riskGate.score <= filter.maxScore!);
+      }
     }
 
     const limit = filter.limit ?? 100;
     return results.slice(-limit);
   }
 
-  /**
-   * Get summary statistics from the audit log.
-   */
   stats(): {
     totalOperations: number;
     byTool: Record<string, number>;
@@ -127,7 +114,7 @@ export class AuditLog {
     sessionsTracked: number;
     highRiskOps: number;
   } {
-    const entries = this.readAll();
+    const entries = this.entries;
 
     const byTool: Record<string, number> = {};
     let totalScore = 0;
@@ -155,9 +142,6 @@ export class AuditLog {
     };
   }
 
-  /**
-   * Saintize sensitive parameters before logging.
-   */
   private sanitizeParams(params: Record<string, unknown>): Record<string, unknown> {
     const sensitive = ['token', 'password', 'secret', 'key', 'api_key', 'auth'];
     const sanitized: Record<string, unknown> = {};
@@ -173,9 +157,6 @@ export class AuditLog {
     return sanitized;
   }
 
-  /**
-   * Truncate large results to prevent log bloat.
-   */
   private truncateResult(result: unknown, maxChars = 5000): unknown {
     const str = typeof result === 'string'
       ? result
@@ -188,10 +169,13 @@ export class AuditLog {
     return result;
   }
 
-  /**
-   * Append an entry to the JSONL audit log file.
-   */
   private append(entry: AuditEntry): void {
+    // Update in-memory index
+    this.entries.push(entry);
+    const sessionEntries = this.sessionIndex.get(entry.sessionId) ?? [];
+    sessionEntries.push(entry);
+    this.sessionIndex.set(entry.sessionId, sessionEntries);
+
     const dir = path.dirname(this.logPath);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -201,18 +185,25 @@ export class AuditLog {
     fs.appendFileSync(this.logPath, line, 'utf-8');
   }
 
-  /**
-   * Read all audit entries from the log file.
-   */
-  private readAll(): AuditEntry[] {
+  private loadFromDisk(): void {
     try {
-      if (!fs.existsSync(this.logPath)) return [];
-
+      if (!fs.existsSync(this.logPath)) return;
       const content = fs.readFileSync(this.logPath, 'utf-8');
       const lines = content.split('\n').filter((l) => l.trim());
-      return lines.map((l) => JSON.parse(l));
+      const entries = lines.map((l) => JSON.parse(l)) as AuditEntry[];
+      for (const e of entries) {
+        this.entries.push(e);
+        const se = this.sessionIndex.get(e.sessionId) ?? [];
+        se.push(e);
+        this.sessionIndex.set(e.sessionId, se);
+      }
     } catch {
-      return [];
+      // Keep empty state
     }
+  }
+
+  /** Get raw entries count (for debugging) */
+  get size(): number {
+    return this.entries.length;
   }
 }

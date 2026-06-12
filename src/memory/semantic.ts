@@ -77,12 +77,12 @@ export class SemanticMemoryStore {
     }
   }
 
-  /** Get active (non-stale) user facts */
+  /** Get active (non-stale) user facts — updates lastReferenced on read */
   getFacts(maxStaleMs = 30 * 24 * 60 * 60 * 1000): string[] {
     const now = Date.now();
     const staleThreshold = now - maxStaleMs;
     return this.memory.userFacts
-      .filter((f) => f.lastReferenced >= staleThreshold)
+      .filter((f) => { if (f.lastReferenced >= staleThreshold) { f.lastReferenced = now; return true; } return false; })
       .map((f) => f.fact);
   }
 
@@ -138,10 +138,12 @@ export class SemanticMemoryStore {
     this.save();
   }
 
-  /** Get rules above a confidence threshold */
+  /** Get rules above a confidence threshold — updates lastReferenced on read */
   getRules(minConfidence = 0.5): LearnedRule[] {
+    const now = Date.now();
     return this.memory.learnedRules
       .filter((r) => r.confidence >= minConfidence)
+      .map((r) => { r.lastReferenced = now; return r; })
       .sort((a, b) => b.confidence - a.confidence);
   }
 

@@ -114,6 +114,18 @@ export class WorkingMemory {
 
   /** Cache a tool call result */
   cacheToolResult(toolName: string, result: unknown): void {
+    // Evict oldest entry if over capacity (LRU-style cap=100)
+    if (this.recentToolResults.size >= 100) {
+      let oldestKey = '';
+      let oldestTime = Infinity;
+      for (const [key, val] of this.recentToolResults) {
+        if (val.timestamp < oldestTime) {
+          oldestTime = val.timestamp;
+          oldestKey = key;
+        }
+      }
+      if (oldestKey) this.recentToolResults.delete(oldestKey);
+    }
     this.recentToolResults.set(toolName, {
       toolName,
       result,
@@ -127,6 +139,8 @@ export class WorkingMemory {
     if (cached && Date.now() - cached.timestamp < maxAgeMs) {
       return cached;
     }
+    // Clean up stale entry
+    if (cached) this.recentToolResults.delete(toolName);
     return undefined;
   }
 

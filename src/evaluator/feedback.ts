@@ -177,7 +177,9 @@ export class ImplicitFeedbackEngine {
     for (const fb of relevant) {
       const ageHours = (Date.now() - fb.timestamp) / (60 * 60 * 1000);
       const recencyWeight = Math.max(0.1, 1 - ageHours / recentHours);
-      const weight = fb.confidence * recencyWeight;
+      // Auto-detected signals get 0.5x weight discount to avoid polluting stats
+      const sourceWeight = fb.source.startsWith('auto-') ? 0.5 : 1.0;
+      const weight = fb.confidence * recencyWeight * sourceWeight;
       weightedSum += fb.strength * weight;
       totalWeight += weight;
     }

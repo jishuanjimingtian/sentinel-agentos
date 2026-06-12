@@ -157,9 +157,6 @@ export class AgentOS {
     const preExec = this.evaluator.preExec.evaluate(toolName, parameters);
     this.memory.working.addMessage('tool', JSON.stringify(parameters));
 
-    // Auto-detect if this call references a previous result
-    this.detectResultUtilization(parameters, sessionId);
-
     // --- Phase 2: Snapshot before execution ---
     const snapshot = this.guard.snapshot.takeSnapshot(
       `call_${Date.now()}`,
@@ -256,6 +253,9 @@ export class AgentOS {
 
     // --- Phase 5: Track result for utilization scoring ---
     this.evaluator.postExec.trackResult(auditEntry.id, toolResult);
+
+    // --- Phase 5.5: Auto-detect result utilization (after track, avoids race) ---
+    this.detectResultUtilization(toolParameters, sessionId);
 
     // --- Phase 6: Record in profiler (reuse pre-exec from pipeline start) ---
     const preExecMetric = this.evaluator.preExec.evaluate(toolName, toolParameters);
@@ -369,6 +369,12 @@ export class AgentOS {
 
     // Phase 5: Decay unused semantic rules
     this.memory.semantic.decayUnusedRules();
+
+    // Phase 5.3: Clean up profiler session scores
+    this.evaluator.profiler.clearSession(sessionId);
+
+    // Phase 5.5: Force Episodic compression
+    this.memory.episodic.record('note', 'Session end', ['session-end'], []);
 
     // Phase 6: Clear working memory for next session
     this.memory.working.clear();

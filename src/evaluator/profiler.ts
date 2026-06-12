@@ -68,6 +68,11 @@ export class AgentProfiler {
     this.sessionScores.set(sessionId, sessionScores);
   }
 
+  /** Clean up session scores to prevent memory leak */
+  clearSession(sessionId: string): void {
+    this.sessionScores.delete(sessionId);
+  }
+
   /**
    * Build the current agent profile.
    */
