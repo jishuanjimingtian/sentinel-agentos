@@ -227,6 +227,117 @@ export class ImplicitFeedbackEngine {
   }
 
   // ══════════════════════════════════
+  //  User message analysis — detect correction signals from text
+  // ══════════════════════════════════
+
+  /**
+   * Analyze user messages to detect implicit correction/feedback signals.
+   *
+   * Chinese corrective patterns (high precision, low recall — only matches clear signals):
+   * - "不对"/"错了"/"不是这样" → user_provided_correction (confidence 0.8)
+   * - "漏了"/"缺了"/"没包括"/"遗漏" → user_provided_correction (confidence 0.75)
+   * - "你没"/"你怎么"/"你咋" + 负面动作(忘记/漏/没/不) → user_provided_correction (confidence 0.7)
+   * - "失忆"/"忘了"/"不记得" → user_provided_correction (confidence 0.85)
+   * - "重新"/"再查"/"再搜"/"再看看" → user_repeated_instruction (confidence 0.6)
+   * - "不对吧"/"没音信" → user_interrupted (confidence 0.5)
+   *
+   * English patterns:
+   * - "wrong"/"incorrect"/"not right" → user_provided_correction (confidence 0.7)
+   * - "missed"/"missing"/"forgot"/"incomplete" → user_provided_correction (confidence 0.7)
+   * - "redo"/"again"/"retry"/"try again" → user_repeated_instruction (confidence 0.5)
+   *
+   * Returns number of signals detected.
+   */
+  detectFromUserMessages(messages: Array<{ role: string; content: string; ts?: number }>, sessionId: string): number {
+    let detected = 0;
+    const userMessages = messages.filter((m) => m.role === 'user');
+
+    for (const msg of userMessages) {
+      const text = msg.content.toLowerCase();
+      const dedupKey = `msg:${msg.ts ?? Date.now()}:${msg.content.substring(0, 40)}`;
+      if (this.detectedKeys.has(dedupKey)) continue;
+
+      // ── Chinese correction patterns ──
+
+      // Strong frustration: "失忆"/"忘了"/"不记得"
+      if (/失忆|忘了|(?:怎么|咋).{0,3}(?:忘|漏|没|不记得)/.test(msg.content)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_provided_correction', sessionId, undefined, 0.85, 'auto-msg-correction-strong');
+        detected++;
+        continue;
+      }
+
+      // Direct negation: "不对"/"错了"/"不是这样" (not followed by "吗"/"吧" question)
+      if (/(?:不对|错了|不是这样)(?:[吗吧]|的[吗吧])?$/.test(msg.content) ||
+          /^(?:不对|错了|不是)！/.test(msg.content)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_provided_correction', sessionId, undefined, 0.8, 'auto-msg-correction-direct');
+        detected++;
+        continue;
+      }
+
+      // Omission: "漏了"/"缺了"/"没包括"/"遗漏"
+      if (/漏了|缺了|没包括|遗漏|没统计|没算|少.了/.test(msg.content)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_provided_correction', sessionId, undefined, 0.75, 'auto-msg-correction-omission');
+        detected++;
+        continue;
+      }
+
+      // Agent capability complaint: "你没"/"你怎么"/"你咋" + negative
+      if (/(?:你没|你怎么|你咋)(?:.{0,5})(?:听|做|查|看|写|记|算|说|回答|汇总|总结)/.test(msg.content)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_provided_correction', sessionId, undefined, 0.7, 'auto-msg-correction-agent');
+        detected++;
+        continue;
+      }
+
+      // Repeat request: "重新"/"再查"/"再搜"/"再看看"/"再汇总"
+      if (/重新.{0,3}(?:做|查|搜|看|写|汇总|弄|搞|来)|再.{0,2}(?:查|搜|看|汇总|弄|搞|试)/.test(msg.content)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_repeated_instruction', sessionId, undefined, 0.6, 'auto-msg-repeat-request');
+        detected++;
+        continue;
+      }
+
+      // Mild interruption: "没音信"/"不对吧"
+      if (/没音信|不对吧/.test(msg.content)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_interrupted', sessionId, undefined, 0.5, 'auto-msg-interrupt');
+        detected++;
+        continue;
+      }
+
+      // ── English patterns ──
+
+      // Strong negation
+      if (/(?:that.?s|this is|you.?re|you are).{0,5}(?:wrong|incorrect|not right|not correct)/.test(text)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_provided_correction', sessionId, undefined, 0.7, 'auto-msg-correction-en');
+        detected++;
+        continue;
+      }
+
+      // Omission
+      if (/(?:missed|missing|forgot|forgotten|incomplete|left out|didn.?t include)/.test(text)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_provided_correction', sessionId, undefined, 0.7, 'auto-msg-omission-en');
+        detected++;
+        continue;
+      }
+
+      // Repeat
+      if (/(?:redo|do it again|try again|retry)/.test(text)) {
+        this.detectedKeys.add(dedupKey);
+        this.record('user_repeated_instruction', sessionId, undefined, 0.5, 'auto-msg-repeat-en');
+        detected++;
+      }
+    }
+
+    return detected;
+  }
+
+  // ══════════════════════════════════
 
   private getSignalStrength(signal: SignalType): number {
     switch (signal) {

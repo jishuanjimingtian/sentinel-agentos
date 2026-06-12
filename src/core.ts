@@ -330,9 +330,19 @@ export class AgentOS {
   endSession(sessionId: string, workspaceRoot?: string): void {
     // Phase 1: Auto-detect feedback from audit log
     const recentAudit = this.guard.audit.query({ sessionId, limit: 100 });
-    const detected = this.evaluator.feedback.autoDetect(recentAudit, sessionId);
+    let detected = this.evaluator.feedback.autoDetect(recentAudit, sessionId);
+
+    // Phase 1.5: Detect correction signals from user messages in WorkingMemory
+    const messages = this.memory.working.recentMessages.map((m) => ({
+      role: m.role,
+      content: m.content,
+      ts: m.timestamp as number | undefined,
+    }));
+    const msgDetected = this.evaluator.feedback.detectFromUserMessages(messages, sessionId);
+    detected += msgDetected;
 
     // Phase 2: Promote important working memory items to episodic
+    // 2a: Current task
     if (this.memory.working.currentTask) {
       this.memory.episodic.record(
         'milestone',
@@ -341,6 +351,9 @@ export class AgentOS {
         [sessionId],
       );
     }
+
+    // 2b: Working memory context snapshot for next session recovery
+    this.persistWorkingContext(sessionId);
 
     // Phase 3: Log learned rules from this session
     const rules = this.memory.semantic.getRules(0.6);
@@ -379,6 +392,75 @@ export class AgentOS {
 
     // Phase 6: Clear working memory for next session
     this.memory.working.clear();
+  }
+
+  /**
+   * Persist WorkingMemory context snapshot to Episodic + disk
+   * so the next session can recover key context.
+   */
+  private persistWorkingContext(sessionId: string): void {
+    const wm = this.memory.working;
+
+    // Capture open files
+    if (wm.openFiles.length > 0) {
+      this.memory.episodic.record(
+        'note',
+        `Open files: ${wm.openFiles.join(', ')}`,
+        ['context', 'open-files'],
+        [sessionId],
+      );
+    }
+
+    // Capture recent tool results summary (last 5, truncated)
+    const toolKeys = Array.from(wm.recentToolResults.keys()).slice(-5);
+    if (toolKeys.length > 0) {
+      const summary = toolKeys.map((k) => {
+        const r = wm.recentToolResults.get(k)?.result;
+        const preview = typeof r === 'string' ? r.substring(0, 80) : JSON.stringify(r ?? '').substring(0, 80);
+        return `${k}: ${preview}`;
+      }).join(' | ');
+      this.memory.episodic.record(
+        'note',
+        `Recent tool results: ${summary}`,
+        ['context', 'tool-results'],
+        [sessionId],
+      );
+    }
+
+    // Capture last user message for continuity
+    const lastUserMsg = [...wm.recentMessages].reverse().find((m) => m.role === 'user');
+    if (lastUserMsg) {
+      this.memory.episodic.record(
+        'note',
+        `Last user message: ${lastUserMsg.content.substring(0, 200)}`,
+        ['context', 'last-message'],
+        [sessionId],
+      );
+    }
+
+    // Save working context checkpoint to disk
+    if (this.config.workspaceRoot) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const agentosDir = path.join(this.config.workspaceRoot, '.agentos');
+        if (!fs.existsSync(agentosDir)) fs.mkdirSync(agentosDir, { recursive: true });
+        const checkpoint = {
+          sessionId,
+          timestamp: Date.now(),
+          openFiles: wm.openFiles,
+          currentTask: wm.currentTask,
+          lastUserMessage: lastUserMsg?.content?.substring(0, 200) ?? null,
+        };
+        fs.writeFileSync(
+          path.join(agentosDir, 'working-context.json'),
+          JSON.stringify(checkpoint) + '\n',
+          'utf-8',
+        );
+      } catch {
+        // Non-critical
+      }
+    }
   }
 
   /**

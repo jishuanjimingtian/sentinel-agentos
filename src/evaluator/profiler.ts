@@ -84,29 +84,30 @@ export class AgentProfiler {
       this.preMetrics.map((m) =>
         ((m.paramQuality.score + m.contextUtilization.score) / 2) * 100,
       ),
-    );
+    ) ?? 0;
 
     // Runtime scores
     const runtimeScore = this.average(
       this.runMetrics.map((m) => m.adaptiveScore * 100),
-    );
+    ) ?? 0;
 
     // Post-exec scores
     const postExecScore = this.average(
       this.postMetrics.map((m) => m.outcomeScore * 100),
-    );
+    ) ?? 0;
 
     // User satisfaction
     const satisfaction = this.feedbackEngine.getSatisfactionScore(sessionId);
     const satisfactionScore = ((satisfaction + 1) / 2) * 100; // Map -1..1 to 0..100
 
-    // Overall: weighted
-    const overallScore = Math.round(
-      preExecScore * 0.2 +
-      runtimeScore * 0.25 +
-      postExecScore * 0.3 +
-      satisfactionScore * 0.25,
-    );
+    // Overall: weighted — only include dimensions with data
+    let overallScore = 0;
+    let totalWeight = 0;
+    if (this.preMetrics.length > 0) { overallScore += preExecScore * 0.2; totalWeight += 0.2; }
+    if (this.runMetrics.length > 0) { overallScore += runtimeScore * 0.25; totalWeight += 0.25; }
+    if (this.postMetrics.length > 0) { overallScore += postExecScore * 0.3; totalWeight += 0.3; }
+    overallScore += satisfactionScore * 0.25; totalWeight += 0.25; // always include satisfaction
+    overallScore = totalWeight > 0 ? Math.round(overallScore / totalWeight) : 50;
 
     // Recent trend
     const recentCutoff = Date.now() - 24 * 60 * 60 * 1000;
@@ -116,9 +117,9 @@ export class AgentProfiler {
 
     const recentScore = recentPre.length > 0
       ? Math.round(
-        this.average(recentPre.map((m) => (m.paramQuality.score + m.contextUtilization.score) / 2)) * 100 * 0.2 +
-        this.average(recentRun.map((m) => m.adaptiveScore)) * 100 * 0.25 +
-        this.average(recentPost.map((m) => m.outcomeScore)) * 100 * 0.3 +
+        (this.average(recentPre.map((m) => (m.paramQuality.score + m.contextUtilization.score) / 2)) ?? 0) * 100 * 0.2 +
+        (this.average(recentRun.map((m) => m.adaptiveScore)) ?? 0) * 100 * 0.25 +
+        (this.average(recentPost.map((m) => m.outcomeScore)) ?? 0) * 100 * 0.3 +
         satisfactionScore * 0.25,
       )
       : overallScore;
@@ -166,9 +167,9 @@ export class AgentProfiler {
     };
   }
 
-  private average(values: number[]): number {
+  private average(values: number[]): number | null {
     return values.length > 0
       ? values.reduce((s, v) => s + v, 0) / values.length
-      : 0;
+      : null;
   }
 }
