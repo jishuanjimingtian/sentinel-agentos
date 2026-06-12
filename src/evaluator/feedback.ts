@@ -1,4 +1,5 @@
 import { ImplicitFeedback, SignalType } from '../types';
+import { AuditEntry } from '../types';
 import * as crypto from 'crypto';
 
 /**
@@ -14,30 +15,19 @@ function generateFeedbackId(): string {
  * Instead of relying on explicit "thumbs up/down", this engine
  * detects subtle signals from user behavior to infer satisfaction.
  *
+ * Two modes:
+ * - Manual: caller provides explicit signals via record()
+ * - Auto-detect: scans audit log to infer signals (results unused,
+ *   results modified later, repeated same tool, verify failures)
+ *
  * This is the key differentiator of AgentOS: it learns from
  * what users DO, not just what they SAY.
- *
- * Signal rules (based on DESIGN.md §6.3):
- * - user_deleted_code: User deleted what agent wrote → strong negative (-0.8)
- * - user_modified_output: User modified agent's output → moderate negative (-0.5)
- * - user_repeated_instruction: User repeated same command → mild negative (-0.3)
- * - user_immediate_continue: User immediately continued without edit → positive (+0.3)
- * - user_used_result: User referenced agent's output later → strong positive (+0.7)
- * - user_silence_followed_by_praise: Gap then "谢谢" → mild positive (+0.2)
- * - user_interrupted: User stopped agent mid-execution → negative (-0.6)
- * - agent_self_corrected: Agent caught its own mistake → mild positive for agent (+0.3)
  */
 export class ImplicitFeedbackEngine {
   private feedbackLog: ImplicitFeedback[] = [];
 
   /**
    * Record an implicit feedback signal.
-   *
-   * @param signal - Type of implicit signal detected
-   * @param sessionId - Session where signal was detected
-   * @param operationId - Related tool call or request ID
-   * @param confidence - How confident we are about this interpretation (0-1)
-   * @param source - Where the signal was detected (audit_log, message_pattern, diff)
    */
   record(
     signal: SignalType,
@@ -63,9 +53,106 @@ export class ImplicitFeedbackEngine {
     return feedback;
   }
 
+  // ══════════════════════════════════
+  //  Auto-detect feedback from audit log
+  // ══════════════════════════════════
+
   /**
-   * Get the default strength for a signal type.
+   * Scan the audit log and auto-detect implicit feedback signals.
+   *
+   * Detection rules:
+   * - verify FAIL or WARN → user_provided_correction (agent made mistakes)
+   * - same tool+params called within 60s → user_repeated_instruction (agent didn't do it right)
+   * - high risk operations (score > 5) → implicit caution
+   * - consecutive success → agent_self_corrected
+   *
+   * @param entries Recent audit entries to analyze
+   * @param sessionId Session to attribute signals to
+   * @returns Number of signals auto-detected
    */
+  autoDetect(entries: AuditEntry[], sessionId: string): number {
+    let detected = 0;
+
+    // Rule 1: Verify failures → agent made errors
+    for (const entry of entries) {
+      if (entry.verifyGate.status !== 'PASS') {
+        this.record(
+          'user_provided_correction',
+          sessionId,
+          entry.id,
+          0.7,
+          'auto-audit-verify',
+        );
+        detected++;
+      }
+    }
+
+    // Rule 2: Repeated same tool call within 60s → user had to repeat
+    for (let i = 0; i < entries.length; i++) {
+      for (let j = i + 1; j < entries.length; j++) {
+        const ei = entries[i];
+        const ej = entries[j];
+        if (!ei || !ej) continue;
+        if (ei.toolName === ej.toolName &&
+            JSON.stringify(ei.toolParameters) === JSON.stringify(ej.toolParameters) &&
+            Math.abs(ei.completedAt - ej.startedAt) < 60_000) {
+          this.record(
+            'user_repeated_instruction',
+            sessionId,
+            ej.id,
+            0.6,
+            'auto-audit-repeat',
+          );
+          detected++;
+          break; // one signal per repeated pair
+        }
+      }
+    }
+
+    // Rule 3: High risk ops that passed anyway → agent handled risky work
+    for (const entry of entries) {
+      if (entry.riskGate.score > 3 && entry.verifyGate.status === 'PASS') {
+        // Agent successfully executed a risky operation → mild positive
+        this.record(
+          'agent_self_corrected',
+          sessionId,
+          entry.id,
+          0.4,
+          'auto-audit-risk-handled',
+        );
+        detected++;
+      }
+    }
+
+    // Rule 4: Consecutive passes → positive signal
+    let streak = 0;
+    for (const entry of entries) {
+      if (entry.verifyGate.status === 'PASS') {
+        streak++;
+      } else {
+        if (streak >= 5) {
+          this.record(
+            'user_immediate_continue',
+            sessionId,
+            entries[entries.indexOf(entry) - 1]?.id,
+            0.3,
+            'auto-audit-streak',
+          );
+          detected++;
+        }
+        streak = 0;
+      }
+    }
+    if (streak >= 5) {
+      this.record('user_immediate_continue', sessionId, undefined, 0.3, 'auto-audit-streak');
+      detected++;
+    }
+
+    return detected;
+  }
+
+  // ══════════════════════════════════
+
   private getSignalStrength(signal: SignalType): number {
     switch (signal) {
       case 'user_deleted_code': return -0.8;
@@ -79,17 +166,11 @@ export class ImplicitFeedbackEngine {
       case 'agent_self_corrected': return 0.3;
       case 'user_explicit_approval': return 0.6;
       case 'user_used_result': return 0.7;
-      case 'user_shared_output': return 0.8; // User shared agent output → strong positive
+      case 'user_shared_output': return 0.8;
       default: return 0;
     }
   }
 
-  /**
-   * Compute the aggregate satisfaction score from all feedback.
-   *
-   * Weighted by confidence and recency (newer signals matter more).
-   * Returns a score from -1.0 (very unhappy) to +1.0 (very happy).
-   */
   getSatisfactionScore(sessionId?: string, recentHours = 24): number {
     let relevant = this.feedbackLog;
 
@@ -97,7 +178,6 @@ export class ImplicitFeedbackEngine {
       relevant = relevant.filter((f) => f.sessionId === sessionId);
     }
 
-    // Only consider recent signals
     const cutoff = Date.now() - recentHours * 60 * 60 * 1000;
     relevant = relevant.filter((f) => f.timestamp >= cutoff);
 
@@ -107,10 +187,8 @@ export class ImplicitFeedbackEngine {
     let totalWeight = 0;
 
     for (const fb of relevant) {
-      // Recency weight: newer = more important
       const ageHours = (Date.now() - fb.timestamp) / (60 * 60 * 1000);
       const recencyWeight = Math.max(0.1, 1 - ageHours / recentHours);
-
       const weight = fb.confidence * recencyWeight;
       weightedSum += fb.strength * weight;
       totalWeight += weight;
@@ -121,9 +199,6 @@ export class ImplicitFeedbackEngine {
       : 0;
   }
 
-  /**
-   * Get feedback events, optionally filtered.
-   */
   query(filter: {
     signal?: SignalType;
     sessionId?: string;
@@ -134,31 +209,16 @@ export class ImplicitFeedbackEngine {
   } = {}): ImplicitFeedback[] {
     let results = this.feedbackLog;
 
-    if (filter.signal) {
-      results = results.filter((f) => f.signal === filter.signal);
-    }
-    if (filter.sessionId) {
-      results = results.filter((f) => f.sessionId === filter.sessionId);
-    }
-    if (filter.minStrength !== undefined) {
-      results = results.filter((f) => f.strength >= filter.minStrength!);
-    }
-    if (filter.maxStrength !== undefined) {
-      results = results.filter((f) => f.strength <= filter.maxStrength!);
-    }
-    if (filter.since !== undefined) {
-      results = results.filter((f) => f.timestamp >= filter.since!);
-    }
+    if (filter.signal) results = results.filter((f) => f.signal === filter.signal);
+    if (filter.sessionId) results = results.filter((f) => f.sessionId === filter.sessionId);
+    if (filter.minStrength !== undefined) results = results.filter((f) => f.strength >= filter.minStrength!);
+    if (filter.maxStrength !== undefined) results = results.filter((f) => f.strength <= filter.maxStrength!);
+    if (filter.since !== undefined) results = results.filter((f) => f.timestamp >= filter.since!);
 
     results.sort((a, b) => b.timestamp - a.timestamp);
-
-    const limit = filter.limit ?? 50;
-    return results.slice(0, limit);
+    return results.slice(0, filter.limit ?? 50);
   }
 
-  /**
-   * Get feedback summary statistics.
-   */
   stats(): {
     totalSignals: number;
     positiveSignals: number;
@@ -172,18 +232,12 @@ export class ImplicitFeedbackEngine {
       ? this.feedbackLog.reduce((s, f) => s + f.strength, 0) / this.feedbackLog.length
       : 0;
 
-    // Most common signal
     const counts = new Map<SignalType, number>();
-    for (const fb of this.feedbackLog) {
-      counts.set(fb.signal, (counts.get(fb.signal) || 0) + 1);
-    }
+    for (const fb of this.feedbackLog) counts.set(fb.signal, (counts.get(fb.signal) || 0) + 1);
     let mostCommon: SignalType | null = null;
     let maxCount = 0;
     for (const [sig, count] of counts) {
-      if (count > maxCount) {
-        maxCount = count;
-        mostCommon = sig;
-      }
+      if (count > maxCount) { maxCount = count; mostCommon = sig; }
     }
 
     return {

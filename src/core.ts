@@ -157,6 +157,9 @@ export class AgentOS {
     const preExec = this.evaluator.preExec.evaluate(toolName, parameters);
     this.memory.working.addMessage('tool', JSON.stringify(parameters));
 
+    // Auto-detect if this call references a previous result
+    this.detectResultUtilization(parameters, sessionId);
+
     // --- Phase 2: Snapshot before execution ---
     const snapshot = this.guard.snapshot.takeSnapshot(
       `call_${Date.now()}`,
@@ -251,11 +254,14 @@ export class AgentOS {
       verifyChecks: verifyResult.checks,
     });
 
-    // --- Phase 5: Record in profiler ---
+    // --- Phase 5: Track result for utilization scoring ---
+    this.evaluator.postExec.trackResult(auditEntry.id, toolResult);
+
+    // --- Phase 6: Record in profiler (reuse pre-exec from pipeline start) ---
+    const preExecMetric = this.evaluator.preExec.evaluate(toolName, toolParameters);
     this.evaluator.profiler.recordCycle(
       sessionId,
-      // Re-evaluate pre-exec for profiler
-      this.evaluator.preExec.evaluate(toolName, toolParameters),
+      preExecMetric,
       runtime,
       postExec,
     );
@@ -317,11 +323,15 @@ export class AgentOS {
   }
 
   /**
-   * End current session — promote important events to episodic,
-   * clear working memory, and save state.
+   * End current session — auto-detect feedback, promote events to episodic,
+   * append daily log, clear working memory.
    */
-  endSession(sessionId: string): void {
-    // Promote important working memory items to episodic
+  endSession(sessionId: string, workspaceRoot?: string): void {
+    // Phase 1: Auto-detect feedback from audit log
+    const recentAudit = this.guard.audit.query({ sessionId, limit: 100 });
+    const detected = this.evaluator.feedback.autoDetect(recentAudit, sessionId);
+
+    // Phase 2: Promote important working memory items to episodic
     if (this.memory.working.currentTask) {
       this.memory.episodic.record(
         'milestone',
@@ -331,7 +341,7 @@ export class AgentOS {
       );
     }
 
-    // Log learned rules from this session
+    // Phase 3: Log learned rules from this session
     const rules = this.memory.semantic.getRules(0.6);
     for (const rule of rules.slice(0, 3)) {
       this.memory.episodic.record(
@@ -342,8 +352,82 @@ export class AgentOS {
       );
     }
 
-    // Clear working memory for next session
+    // Phase 4: Record session end event with stats
+    const profile = this.evaluator.profiler.getProfile(sessionId);
+    const auditStats = this.guard.audit.stats();
+    this.memory.episodic.record(
+      'note',
+      `Session ended — Score: ${profile.overallScore}/100 | Ops: ${auditStats.totalOperations} | Feedback signals detected: ${detected}`,
+      ['session-end', 'summary'],
+      [sessionId],
+    );
+
+    // Phase 5: Append daily log if workspaceRoot provided
+    if (workspaceRoot) {
+      this.appendDailyLog(sessionId, workspaceRoot);
+    }
+
+    // Phase 6: Clear working memory for next session
     this.memory.working.clear();
+  }
+
+  /**
+   * Append evaluation summary to daily log file.
+   */
+  private appendDailyLog(sessionId: string, workspaceRoot: string): void {
+    try {
+      const { appendFileSync, existsSync, mkdirSync } = require('fs');
+      const path = require('path');
+      const dateKey = new Date().toISOString().split('T')[0];
+      const memDir = path.join(workspaceRoot, 'memory');
+      if (!existsSync(memDir)) mkdirSync(memDir, { recursive: true });
+
+      const dailyFile = path.join(memDir, `${dateKey}.md`);
+      const profile = this.evaluator.profiler.getProfile(sessionId);
+      const auditStats = this.guard.audit.stats();
+      const satisfaction = this.evaluator.feedback.getSatisfactionScore(sessionId);
+
+      const report = [
+        '',
+        '## 📊 AgentOS Evaluator 今日评估',
+        '',
+        `**综合评分**: ${profile.overallScore}/100 | Pre:${profile.breakdown.preExec ?? 'N/A'}/100 | Run:${profile.breakdown.runtime ?? 'N/A'}/100 | Post:${profile.breakdown.postExec ?? 'N/A'}/100`,
+        `**趋势**: ${profile.trends.improving ? '📈 上升' : '📉 下降'} | **操作数**: ${auditStats.totalOperations} | **满意度**: ${satisfaction}`,
+        profile.warnings.length > 0 ? `**⚠️**: ${profile.warnings.join('; ')}` : '',
+        profile.strengths.length > 0 ? `**✅**: ${profile.strengths.join('; ')}` : '',
+        '',
+      ].filter(Boolean).join('\n');
+
+      const existing = existsSync(dailyFile) ? require('fs').readFileSync(dailyFile, 'utf-8') : '';
+      if (!existing.includes('AgentOS Evaluator')) {
+        appendFileSync(dailyFile, report, 'utf-8');
+      }
+    } catch (e) {
+      console.warn('[AgentOS] Failed to append daily log:', e);
+    }
+  }
+
+  /**
+   * Detect if this tool call's parameters reference a previous result.
+   */
+  private detectResultUtilization(params: Record<string, unknown>, sessionId: string): void {
+    try {
+      const allValues = Object.values(params).join(' ');
+      const tracker = this.evaluator.postExec['resultReferenceTracker'];
+      if (!tracker) return;
+
+      for (const [opId, entry] of tracker) {
+        if (entry.referenced) continue;
+        const resultStr = JSON.stringify(entry.result);
+        // Check if parameters contain a reference to previous result
+        if (resultStr.length > 10 && allValues.includes(resultStr.substring(0, 20))) {
+          this.evaluator.postExec.markResultReferenced(opId);
+          this.evaluator.feedback.record('user_used_result', sessionId, opId, 0.5, 'auto-param-match');
+        }
+      }
+    } catch {
+      // Non-critical, silently ignore detection failures
+    }
   }
 
   /**
