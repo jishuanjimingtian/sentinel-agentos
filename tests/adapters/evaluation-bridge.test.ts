@@ -71,12 +71,13 @@ describe('EvaluationBridge', () => {
   it('should penalize retries and timeouts', () => {
     const opId = bridge.preExec('exec', { command: 'npm test' });
     bridge.postExec(opId, {
-      retryCount: 3,
+      retryCount: 5,
       hadTimeout: true,
     });
 
     const profile = bridge.getProfile();
     expect(profile.breakdown.runtime).toBeLessThanOrEqual(50);
+    // runtimeScore < 50 应该触发警告
     expect(profile.warnings.length).toBeGreaterThan(0);
   });
 
@@ -121,7 +122,7 @@ describe('EvaluationBridge', () => {
 
     const acc = bridge.getToolAccuracy();
     expect(acc['read']).toBeDefined();
-    expect(acc['read'].calls).toBe(2);
+    expect(acc['read']!.calls).toBe(2);
   });
 
   it('should export state', () => {

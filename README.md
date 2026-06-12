@@ -604,6 +604,268 @@ print(requests.get(f"{BASE}/pipeline/report", headers=HEADERS).text)
 
 ---
 
+---
+
+## 🔌 sentinel-guard Skill — OpenClaw 实际对接
+
+> 这是 Sentinel AgentOS 接入 OpenClaw Agent 框架的**生产级 skill**。
+> 提供一个统一入口 `sentinel.execute()`，自动走完 Guard → Execute → Verify + Audit + Memory + Evaluator 三层面。
+> 使用前务必阅读 [sentinel-guard SKILL.md](../skills/sentinel-guard/SKILL.md)。
+
+### 统一入口 vs 传统两段式
+
+**传统方式（preCheck + postCheck 两次调用）**：
+
+```javascript
+const guard = require('./sentinel-guard');
+const check = guard.preCheck('exec', { command: '...' });  // 只做拦截
+if (!check.passed) return ...;
+// 执行...
+guard.postCheck('exec', params, result);  // 只做审计
+```
+
+**统一入口（推荐）**：
+
+```javascript
+const sentinel = require('./sentinel-guard');
+const result = await sentinel.execute('exec', { command: 'npm test' }, () => exec('npm test'));
+
+// result.allowed   — Guard 是否放行
+// result.result    — 执行函数的返回值
+// result.auditId   — 审计 ID
+// result.verify    — Verify Gate 状态 (PASS/WARN/FAIL)
+// result.profile   — 当前质量评分 (0-100)
+```
+
+### 执行流程详解
+
+```
+sentinel.execute(toolName, params, fn)
+│
+├─ 第1层: 确定性命令/文件拦截 (<1μs，零 LLM)
+│   ├─ 危险命令正则匹配 (rm -rf /, mkfs, dd if=, fork bomb...)
+│   ├─ 警告命令正则匹配 (git push --force, npm publish, DROP TABLE...)
+│   ├─ 敏感文件 glob 匹配 (.env, *.key, *.pem, .git/**...)
+│   └─ 保护文件匹配 (package.json, MEMORY.md, AGENTS.md...)
+│
+├─ 第2层: AgentOS Pipeline
+│   ├─ Schema Gate — 参数格式校验 (required/types/pathDeny/maxSize/secrets)
+│   ├─ Risk Gate — 四维公式评分 → auto/notify/confirm/deny
+│   └─ Snapshot Gate — 执行前文件 hash 快照
+│
+├─ 第3层: 实际执行 fn()
+│   └─ 异常捕获，失败也记录审计
+│
+├─ 第4层: Verify + Audit + Evaluator
+│   ├─ Verify Gate — 8 项确定性校验 (文件存在/变更/lint/格式...)
+│   ├─ Audit Log — JSONL 不可篡改审计
+│   ├─ PreExecEvaluator — 参数质量+上下文利用评分
+│   ├─ RuntimeEvaluator — 重试/超时/自纠正评分
+│   ├─ PostExecEvaluator — 验证通过/用户接受/结果利用率评分
+│   └─ AgentProfiler — 综合评分 0-100 + 趋势 + 亮点/警告
+│
+├─ 第5层: Memory 同步
+│   ├─ Working Memory — 消息+工具结果缓存
+│   ├─ Episodic Memory — 事件记录
+│   └─ Semantic Memory — (自动迁移时写入)
+│
+└─ 返回统一结果
+```
+
+### execute() 完整返回值
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `allowed` | boolean | 是否通过 Guard 层 |
+| `blocked` | boolean | 是否被拦截 |
+| `risk` | `'auto' | 'confirm' | 'deny'` | 风险等级 |
+| `reason` | string? | 拦截/警告原因（blocked=true 时） |
+| `needsConfirmation` | boolean? | 是否需要用户确认 |
+| `result` | any | 执行函数的返回值 |
+| `error` | string? | 执行异常信息 |
+| `auditId` | string | 审计条目 ID（如 `op_5`） |
+| `verify` | `'PASS' | 'WARN' | 'FAIL'` | Verify Gate 状态 |
+| `profile` | number | 当前 Agent 质量评分 (0-100) |
+
+**被拦截示例**：
+
+```json
+{
+  "allowed": false,
+  "blocked": true,
+  "risk": "DENY",
+  "reason": "🚫 危险命令: rm -rf / — 删除整个系统"
+}
+```
+
+**正常通过示例**：
+
+```json
+{
+  "allowed": true,
+  "blocked": false,
+  "risk": "auto",
+  "result": "hello output",
+  "auditId": "op_5",
+  "verify": "PASS",
+  "profile": 85
+}
+```
+
+### 自动迁移 MEMORY.md → Semantic Memory
+
+首次加载 sentinel-guard 时自动执行，仅一次：
+
+1. 解析 `MEMORY.md` 的 Markdown 结构（支持 bullet 列表和表格行）
+2. 提取用户事实 (👤 关于老板 / 🆔 关于我) → `semantic.addFact()`
+3. 提取工作方式规则 (🤖 我的工作方式) → `semantic.learnRule()`
+4. 提取项目上下文 (📦 coderev / agentos) → `semantic.setProjectContext()`
+5. 提取环境记录 (💻 环境记录) → `semantic.addFact()`
+6. 提取关键决策 (💡 关键决策记录) → `episodic.record('decision', ...)`
+7. 生成 `.sentinel-migrated` 标记文件防止重复
+
+迁移后原有 MEMORY.md 不受影响（只读不写），两套记忆并行：
+
+| 记忆系统 | 用途 | 格式 |
+|---------|------|------|
+| `MEMORY.md` | 人类编辑，session 注入上下文 | Markdown |
+| AgentOS Semantic Memory | 程序读写，自动学习 | 结构化 JSON (`.agentos/`) |
+
+### 规则配置 guard-rules.json
+
+所有 Guard 黑白名单可通过 `guard-rules.json` 直接编辑，无需改源码：
+
+```json
+{
+  "dangerous": [
+    ["rm -rf /", "删除整个系统"],
+    ["sudo rm", "超级用户删除"],
+    ["mkfs", "格式化磁盘"]
+  ],
+  "warning": [
+    ["git push --force", "强制覆盖远程分支"],
+    ["npm publish\\b", "发布 npm 公共包"],
+    ["DROP (TABLE|DATABASE)", "删除数据库"]
+  ],
+  "sensitiveFiles": [
+    ".env", ".env.*", "*.key", "*.pem",
+    ".git/**", "**/credentials/**"
+  ],
+  "protectedFiles": [
+    "package.json", "MEMORY.md", "AGENTS.md", "SOUL.md"
+  ],
+  "schema": [
+    { "tool": "exec", "required": ["command"] },
+    {
+      "tool": "write",
+      "required": ["path", "content"],
+      "pathDeny": [".env", "*.key", ".git/**"],
+      "maxSize": { "content": 1048576 },
+      "secrets": ["content"]
+    }
+  ]
+}
+```
+
+| 配置项 | 类型 | 说明 |
+|--------|------|------|
+| `dangerous` | `[regex, desc][]` | 匹配到直接拒绝 |
+| `warning` | `[regex, desc][]` | 匹配到需用户确认 |
+| `sensitiveFiles` | `string[]` | glob 模式，禁止读写 |
+| `protectedFiles` | `string[]` | 精确匹配，禁止删除 |
+| `schema` | `SchemaRule[]` | AgentOS Schema Gate 规则 |
+
+### 完整 API 参考
+
+```javascript
+const sentinel = require('./sentinel-guard');
+```
+
+| 方法 | 类型 | 说明 |
+|------|------|------|
+| `execute(tool, params, fn, opts?)` | async | **统一入口**，走完三层 |
+| `preCheck(tool, params)` | sync | [兼容] 仅确定性拦截 |
+| `postCheck(tool, params, result)` | sync | [兼容] 仅审计记录 |
+| `injectContext()` | sync → string | Session 启动时注入 Memory 上下文 |
+| `endSession()` | sync | Session 结束：追加 daily log → 清空 Working → 同步 Episodic |
+| `status()` | sync → string | AgentOS 状态报告 |
+| `fullStatus()` | sync → object | 完整状态快照 (JSON) |
+| `compactReport()` | sync → string | 精简版评估报告 |
+| `fullReport()` | sync → string | 完整评估报告 |
+| `audit(limit?)` | sync → array | 最近 N 条审计记录 |
+| `feedback(signal)` | sync | 记录用户反馈信号 |
+
+### Session 生命周期
+
+```
+Session 启动
+  ├─ require('./sentinel-guard')          ← 首次自动迁移 MEMORY.md
+  ├─ sentinel.injectContext()             ← 注入 Semantic+Episodic 上下文
+  │
+Session 运行中
+  ├─ sentinel.execute('exec', ...)        ← 每次工具调用
+  ├─ sentinel.execute('write', ...)
+  ├─ sentinel.feedback('user_used_result') ← 关键节点记录反馈
+  │
+Session 结束
+  └─ sentinel.endSession()               ← 追加 daily log + 清空 Working
+```
+
+### AgentOS 与 sentinel-guard 功能对照
+
+| 功能 | AgentOS 源码 | sentinel-guard skill | 覆盖率 |
+|------|------------|---------------------|:------:|
+| Schema Gate (12 项校验) | ✅ `schema-gate.ts` | ✅ `execute()` 内自动 | 100% |
+| Risk Gate (四维公式) | ✅ `risk-gate.ts` | ✅ `execute()` 内自动 | 100% |
+| 确定性命令拦截 | ❌ (依赖 Sandbox) | ✅ 正则匹配 (<1μs) | **额外增强** |
+| Snapshot Gate | ✅ `snapshot-verify.ts` | ✅ `execute()` 内自动 | 100% |
+| Verify Gate (8 项校验) | ✅ `snapshot-verify.ts` | ✅ `execute()` 内自动 | 100% |
+| Audit Log (JSONL) | ✅ `audit-log.ts` | ✅ 双写 (AgentOS + 自身) | 100% |
+| 规则可配置 | ❌ (代码硬编码) | ✅ `guard-rules.json` | **额外增强** |
+| Working Memory | ✅ `working.ts` | ✅ 消息+工具缓存 | 100% |
+| Episodic Memory | ✅ `episodic.ts` | ✅ 事件自动记录 | 100% |
+| Semantic Memory | ✅ `semantic.ts` | ✅ 自动迁移+初始值 | 100% |
+| MEMORY.md 迁移 | ✅ `memory-bridge.ts` | ✅ 首次加载自动跑 | 100% |
+| Session 注入上下文 | ✅ `injectContext()` | ✅ `sentinel.injectContext()` | 100% |
+| Session 清理 | ✅ `endSession()` | ✅ 含 daily log | 100% |
+| PreExecEvaluator | ✅ `exec-evaluator.ts` | ✅ `execute()` 内自动 | 100% |
+| RuntimeEvaluator | ✅ `exec-evaluator.ts` | ✅ `execute()` 内自动 | 100% |
+| PostExecEvaluator | ✅ `exec-evaluator.ts` | ✅ `execute()` 内自动 | 100% |
+| AgentProfiler | ✅ `profiler.ts` | ✅ `execute()` 返回 profile | 100% |
+| ImplicitFeedback | ✅ `feedback.ts` | ✅ `recordFeedback()` | 100% |
+| Daily Log 注入 | ✅ `evaluation-bridge.ts` | ✅ `endSession()` 自动 | 100% |
+| Compact/Full Report | ✅ `evaluation-bridge.ts` | ✅ `compactReport()`/`fullReport()` | 100% |
+| Sandbox 沙箱 | ✅ `sandbox.ts` | ❌ (暂未接入) | 0% |
+| HTTP API | ✅ `server.ts` | ❌ (skill 为进程内调用) | N/A |
+| **按设计范围总计** | **20 项** | **20/20** | **100%** |
+
+### 快速入门（5 步接入）
+
+```javascript
+// 1. 加载 skill（自动迁移 MEMORY.md）
+const sentinel = require('./sentinel-guard');
+
+// 2. Session 启动 — 注入记忆上下文
+const context = sentinel.injectContext();
+
+// 3. 工具调用 — 统一入口，三层全走
+const r = await sentinel.execute('write',
+  { path: 'src/main.ts', content: 'console.log("hi")' },
+  () => fs.writeFileSync('src/main.ts', 'console.log("hi")')
+);
+if (!r.allowed) return { blocked: true, reason: r.reason };
+
+// 4. 记录反馈
+sentinel.feedback('user_used_result');
+
+// 5. Session 结束 — 追加 daily log + 清理
+sentinel.endSession();
+```
+
+完整示例代码见 `sentinel-guard/SKILL.md`，配置文件见 `sentinel-guard/guard-rules.json`。
+
+---
+
 ### API 层 · SDK API
 
 ```typescript
