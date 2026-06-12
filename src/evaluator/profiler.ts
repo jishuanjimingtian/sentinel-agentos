@@ -55,6 +55,9 @@ export class AgentProfiler {
    * Record a complete evaluation cycle for one tool call.
    */
   recordCycle(sessionId: string, pre: PreExecMetrics, run: RuntimeMetrics, post: PostExecMetrics): void {
+    // Ensure timestamp is set for trend filtering
+    if (!pre.timestamp) pre.timestamp = Date.now();
+    if (!post.timestamp) (post as any).timestamp = Date.now();
     this.preMetrics.push(pre);
     this.runMetrics.push(run);
     this.postMetrics.push(post);

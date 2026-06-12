@@ -168,6 +168,7 @@ export interface RuntimeMetrics {
 }
 
 export interface PostExecMetrics {
+  timestamp?: number;
   verifyPassed: boolean;
   verifyScore: number;
   userAccepted: boolean;

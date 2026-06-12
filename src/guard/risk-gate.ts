@@ -36,6 +36,23 @@ const DEFAULT_ERROR_RATES: Record<string, number> = {
   compute: 0.02,
 };
 
+// Danger patterns for content-based fallback (used when no profile registered)
+const DANGER_PATTERNS: Array<{ regex: RegExp; impact: ImpactLevel; reversibility: number; sensitivity: SensitivityLevel }> = [
+  { regex: new RegExp('rm\\s+-rf\\s+(?:[/~]|\\*)', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('sudo\\s+rm\\s+-rf', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('del\\s+[/][fsq]\\s+[a-z]:[\\\\]?', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('\\bmkfs\\b', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('\\bdd\\s+if=', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('chmod\\s+777\\s+-R', 'i'), impact: 'system', reversibility: 0.1, sensitivity: 'high' },
+  { regex: /drop\s+(table|database|schema)/i, impact: 'project', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: /truncate\s+(table\s+)?/i, impact: 'project', reversibility: 0.0, sensitivity: 'high' },
+  { regex: /git\s+push\s+[\w\s-]*--force/i, impact: 'project', reversibility: 0.2, sensitivity: 'high' },
+  { regex: /git\s+reset\s+--hard/i, impact: 'project', reversibility: 0.3, sensitivity: 'high' },
+  { regex: /npm\s+unpublish\b/i, impact: 'project', reversibility: 0.0, sensitivity: 'high' },
+  { regex: /\.(?:env|key|pem|p12|pfx|jks|keystore)/i, impact: 'workspace', reversibility: 0.5, sensitivity: 'critical' },
+];
+
+
 /**
  * Tool-level risk profile — users define this per tool.
  */
@@ -146,19 +163,9 @@ export class RiskGate {
   evaluate(tool: string, _params?: Record<string, unknown>): RiskScore {
     const profile = this.profiles.get(tool);
 
-    // Fallback for unregistered tools — moderate risk, allow but notify
+    // Fallback for unregistered tools — content-based danger analysis
     if (!profile) {
-      const fallbackScore = this.thresholds.autoApprove + 0.1;
-      return {
-        score: fallbackScore,
-        action: 'auto',
-        dimensions: {
-          impact: 1,
-          reversibility: 1,
-          sensitivity: 0,
-          errorRate: 0,
-        },
-      };
+      return this.evaluateUntracked(_params ?? {});
     }
 
     const impact = IMPACT_VALUES[profile.impact];
@@ -181,6 +188,42 @@ export class RiskGate {
         sensitivity,
         errorRate: Math.round(errorRate * 1000) / 1000,
       },
+    };
+  }
+
+  /**
+   * Evaluate risk for an unregistered tool by scanning params for danger patterns.
+   */
+  private evaluateUntracked(params: Record<string, unknown>): RiskScore {
+    const paramText = Object.values(params).join(' ');
+
+    for (const pattern of DANGER_PATTERNS) {
+      if (pattern.regex.test(paramText)) {
+        const impact = IMPACT_VALUES[pattern.impact];
+        const reversibility = Math.min(1, Math.max(0, pattern.reversibility));
+        const sensitivity = SENSITIVITY_VALUES[pattern.sensitivity];
+        const errorRate = DEFAULT_ERROR_RATES['write'] ?? 0.05;
+        const score = impact * (1 - reversibility) * sensitivity * (1 + errorRate);
+
+        let action: RiskAction;
+        if (score >= this.thresholds.deny) action = 'deny';
+        else if (score >= this.thresholds.confirm) action = 'confirm';
+        else if (score >= this.thresholds.notify) action = 'notify';
+        else action = 'auto';
+
+        return {
+          score: Math.round(score * 100) / 100,
+          action,
+          dimensions: { impact, reversibility, sensitivity, errorRate: Math.round(errorRate * 1000) / 1000 },
+        };
+      }
+    }
+
+    // No danger pattern matched — low risk
+    return {
+      score: 0.2,
+      action: 'auto',
+      dimensions: { impact: 1, reversibility: 1, sensitivity: 0, errorRate: 0 },
     };
   }
 

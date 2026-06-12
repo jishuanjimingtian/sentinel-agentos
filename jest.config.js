@@ -5,8 +5,8 @@ module.exports = {
   roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
   testPathIgnorePatterns: ['/node_modules/', 'tests/manual/'],
-  globals: {
-    'ts-jest': {
+  transform: {
+    '^.+\\.tsx?$': ['ts-jest', {
       tsconfig: {
         target: 'ES2022',
         module: 'commonjs',
@@ -16,6 +16,6 @@ module.exports = {
         skipLibCheck: true,
         baseUrl: '.',
       },
-    },
+    }],
   },
 };

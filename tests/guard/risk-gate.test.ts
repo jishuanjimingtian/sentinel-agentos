@@ -175,7 +175,29 @@ describe('RiskGate', () => {
     const gate = new RiskGate();
     const result = gate.evaluate('unknown_tool');
     expect(result.action).toBe('auto');
-    expect(result.score).toBeGreaterThan(DEFAULT_RISK_THRESHOLDS.autoApprove);
+    expect(result.score).toBe(0.2);
+  });
+
+  it('should detect danger patterns in unregistered tools', () => {
+    const gate = new RiskGate();
+    const r1 = gate.evaluate('exec', { command: 'rm -rf /' });
+    expect(r1.action).toBe('deny');
+    expect(r1.score).toBeGreaterThan(5);
+
+    const r2 = gate.evaluate('exec', { command: 'sudo rm -rf /var' });
+    expect(r2.action).toBe('deny');
+
+    const r3 = gate.evaluate('exec', { command: 'DROP TABLE users' });
+    expect(r3.action === 'deny' || r3.action === 'confirm').toBe(true);
+    expect(r3.score).toBeGreaterThan(5);
+
+    const r4 = gate.evaluate('exec', { command: 'echo hello' });
+    expect(r4.action).toBe('auto');
+    expect(r4.score).toBe(0.2);
+
+    const r5 = gate.evaluate('write', { path: '.env', content: 'SECRET=x' });
+    expect(['auto', 'notify']).toContain(r5.action);
+    expect(r5.score).toBeGreaterThan(1);
   });
 
   // --- Stats tracking ---
