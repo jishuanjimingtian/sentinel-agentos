@@ -46,6 +46,8 @@ export class AgentProfiler {
   private runMetrics: RuntimeMetrics[] = [];
   private postMetrics: PostExecMetrics[] = [];
   private sessionScores: Map<string, number[]> = new Map();
+  // Circular buffer cap — prevent unbounded memory growth
+  private static readonly MAX_HISTORY = 200;
 
   constructor(feedbackEngine: ImplicitFeedbackEngine) {
     this.feedbackEngine = feedbackEngine;
@@ -61,6 +63,11 @@ export class AgentProfiler {
     this.preMetrics.push(pre);
     this.runMetrics.push(run);
     this.postMetrics.push(post);
+
+    // Trim oldest entries to prevent unbounded memory growth
+    while (this.preMetrics.length > AgentProfiler.MAX_HISTORY) this.preMetrics.shift();
+    while (this.runMetrics.length > AgentProfiler.MAX_HISTORY) this.runMetrics.shift();
+    while (this.postMetrics.length > AgentProfiler.MAX_HISTORY) this.postMetrics.shift();
 
     // Track per-session scores
     const sessionScores = this.sessionScores.get(sessionId) ?? [];
@@ -168,8 +175,8 @@ export class AgentProfiler {
   }
 
   private average(values: number[]): number | null {
-    return values.length > 0
-      ? values.reduce((s, v) => s + v, 0) / values.length
-      : null;
+    if (values.length === 0) return null;
+    const sum = values.reduce((s, v) => s + v, 0);
+    return Number.isNaN(sum) ? null : sum / values.length;
   }
 }

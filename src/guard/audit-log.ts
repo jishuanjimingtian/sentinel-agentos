@@ -18,6 +18,7 @@ export class AuditLog {
   // In-memory entries + session index for fast lookups
   private entries: AuditEntry[] = [];
   private sessionIndex: Map<string, AuditEntry[]> = new Map();
+  private static readonly MAX_MEMORY_ENTRIES = 200;
 
   constructor(
     workspaceRoot: string,
@@ -170,8 +171,19 @@ export class AuditLog {
   }
 
   private append(entry: AuditEntry): void {
-    // Update in-memory index
+    // Update in-memory index (bounded buffer)
     this.entries.push(entry);
+    while (this.entries.length > AuditLog.MAX_MEMORY_ENTRIES) {
+      const removed = this.entries.shift();
+      if (removed) {
+        const se = this.sessionIndex.get(removed.sessionId);
+        if (se) {
+          const idx = se.findIndex((e) => e.id === removed.id);
+          if (idx >= 0) se.splice(idx, 1);
+          if (se.length === 0) this.sessionIndex.delete(removed.sessionId);
+        }
+      }
+    }
     const sessionEntries = this.sessionIndex.get(entry.sessionId) ?? [];
     sessionEntries.push(entry);
     this.sessionIndex.set(entry.sessionId, sessionEntries);
