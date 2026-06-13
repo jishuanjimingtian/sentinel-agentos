@@ -241,22 +241,33 @@ export class EpisodicMemory {
 
   /**
    * Compress a single event to the next level.
+   *
+   * Strategy: low-importance events compress on a faster schedule;
+   * the most aggressive step is full→summary for tool_call (<0.4) events
+   * after just 1 day, because tool_call events are the majority by volume.
    */
   private compressEvent(event: EpisodicEvent): void {
     const ageDays = (Date.now() - event.timestamp) / (24 * 60 * 60 * 1000);
 
     switch (event.compression) {
       case 'full':
-        if (event.importance < 0.3 && ageDays > 7) {
-          // Compress to summary (first 100 chars)
+        // tool_call with importance <= 0.4 → summary after 1 day
+        if (event.importance <= 0.4 && ageDays > 1) {
+          event.compression = 'summary';
+          event.content = event.content.slice(0, 250);
+        } else if (event.importance < 0.5 && ageDays > 7) {
           event.compression = 'summary';
           event.content = event.content.slice(0, 250);
         }
         break;
 
       case 'summary':
-        if (event.importance < 0.2 && ageDays > 30) {
+        if (event.importance <= 0.4 && ageDays > 3) {
           // Compress to one-liner
+          event.compression = 'one-liner';
+          const firstLine = event.content.split('\n')[0] ?? event.content;
+          event.content = firstLine.slice(0, 120);
+        } else if (event.importance < 0.5 && ageDays > 14) {
           event.compression = 'one-liner';
           const firstLine = event.content.split('\n')[0] ?? event.content;
           event.content = firstLine.slice(0, 120);
@@ -264,7 +275,9 @@ export class EpisodicMemory {
         break;
 
       case 'one-liner':
-        if (event.importance < 0.1 && ageDays > 90) {
+        if (event.importance <= 0.4 && ageDays > 7) {
+          event.compression = 'forgotten';
+        } else if (event.importance < 0.5 && ageDays > 30) {
           event.compression = 'forgotten';
         }
         break;

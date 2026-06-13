@@ -126,7 +126,7 @@ let items=[],P=20,cur=0;
 
 async function R(){
   try{
-    const d=await(await fetch('/pipeline/report')).json();
+    const d=await(await fetch('http://localhost:3456/pipeline/report')).json();
     document.getElementById('st').textContent='已连接';document.querySelector('.r b').style.background='var(--green)';
     const t=d.audit?.totalOperations||0,f=d.audit?.verifyFailures||0,p=t-f,r=t?Math.round(p/t*100):100,q=d.quality?.overallScore||50;
     document.getElementById('t1').textContent=t;
@@ -142,7 +142,8 @@ async function R(){
     document.getElementById('bp').style.width=r+'%';document.getElementById('bf').style.width=(100-r)+'%';
 
     items=d.timeline||[];document.getElementById('rc').textContent='共 '+items.length+' 条';G(0);
-  }catch{
+  }catch(e){
+    console.error('Dashboard fetch error:',e);
     document.getElementById('st').textContent='断开';document.querySelector('.r b').style.background='var(--red)';
   }
 }
@@ -153,14 +154,15 @@ function G(p){cur=p;
   if(!rows.length){b.innerHTML='<tr><td colspan="6"><div class="emp">暂无记录</div></td></tr>';return;}
   const icons={exec:'⚙️',write:'✏️',edit:'🔧',read:'📖'},cls={exec:'e',write:'w',edit:'d',read:'g'};
   b.innerHTML=rows.map(e=>{
-    const t=e.tool||'—',ok=e.verify!=='FAIL',s=Number(e.score)||0,rp=Math.min(s*10,100);
-    const rc=s>3?'var(--red)':s>1?'var(--amber)':'var(--green)';
-    const ts=e.ts?.slice(11,19)||'—',pr=(e.params||'').slice(0,140)||'—';
+    const t=e.tool||'—',ok=e.verify!=='FAIL',riskScore=Number(e.risk)||Number(e.score)||0,rs=Math.round(riskScore*10),rp=Math.min(rs,100);
+    const rc=riskScore>3?'var(--red)':riskScore>1?'var(--amber)':'var(--green)';
+    const d=(typeof e.ts==='number'?new Date(e.ts):new Date(0));const tsVal=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')+':'+String(d.getSeconds()).padStart(2,'0');
+    const pr=(e.params||'').slice(0,140)||'—';
     return `<tr class="${ok?'':'fail'}">
       <td>${icons[t]||'🔹'}</td><td><span class="tag ${cls[t]||''}">${t}</span></td>
-      <td><span class="pm" title="${pr}">${pr}</span></td><td><span class="tm">${ts}</span></td>
+      <td><span class="pm" title="${pr}">${pr}</span></td><td><span class="tm">${tsVal}</span></td>
       <td><span class="pill ${ok?'ok':'ko'}">${ok?'● 通过':'● 拦截'}</span></td>
-      <td><div class="rw"><div class="bar"><div class="fll" style="width:${rp}%;background:${rc}"></div></div><span class="n" style="color:${rc}">${s.toFixed(1)}</span></div></td>
+      <td><div class="rw"><div class="bar"><div class="fll" style="width:${rp}%;background:${rc}"></div></div><span class="n" style="color:${rc}">${riskScore.toFixed(1)}</span></div></td>
     </tr>`;
   }).join('');
 
