@@ -177,10 +177,13 @@ export class EpisodicMemory {
         : event.content.slice(0, 200);
 
       lines.push(`${icon} ${importance} [${date}] ${content}`);
-      if (lines.join('\n').length > maxChars) break;
     }
 
-    return lines.join('\n');
+    let result = lines.join('\n');
+    if (result.length > maxChars) {
+      result = result.slice(0, maxChars - 3) + '...';
+    }
+    return result;
   }
 
   /** Count events matching a set of tags */
@@ -212,8 +215,12 @@ export class EpisodicMemory {
   private compressIfNeeded(): void {
     const now = Date.now();
     const maxBytes = this.maxSizeKb * 1024;
+    let iterations = 0;
+    const MAX_ITERATIONS = 100; // safety cap — prevent infinite loop on pathological data
 
-    while (this.estimatedSize > maxBytes && this.events.length > 0) {
+    while (this.estimatedSize > maxBytes && this.events.length > 0 && iterations < MAX_ITERATIONS) {
+      iterations++;
+      
       // Find the best candidate for compression:
       // oldest + lowest importance + not already forgotten
       let candidateIndex = -1;
@@ -235,7 +242,20 @@ export class EpisodicMemory {
       if (candidateIndex === -1) break; // Nothing left to compress
 
       const target = this.events[candidateIndex];
-      if (target) this.compressEvent(target);
+      if (target) {
+        const oldLevel = target.compression;
+        this.compressEvent(target);
+        // If compression didn't change level (e.g., already at forgotten),
+        // remove the event entirely to prevent infinite loop
+        if (target.compression === oldLevel && target.compression !== 'forgotten') {
+          target.compression = 'forgotten';
+        }
+      }
+    }
+    
+    // Last resort: if still over limit, drop oldest low-importance forgotten events
+    if (this.estimatedSize > maxBytes) {
+      this.events = this.events.filter(e => e.compression !== 'forgotten');
     }
   }
 

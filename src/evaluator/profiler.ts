@@ -135,10 +135,10 @@ export class AgentProfiler {
     const warnings: string[] = [];
     const strengths: string[] = [];
 
-    if (runtimeScore < 0.5) {
+    if (this.runMetrics.length > 0 && runtimeScore < 0.5) {
       warnings.push('High retry rate — consider more planning before execution');
     }
-    if (postExecScore < 0.5) {
+    if (this.postMetrics.length > 0 && postExecScore < 0.5) {
       warnings.push('Low verify pass rate — verify results before claiming success');
     }
     if (satisfaction < -0.3) {

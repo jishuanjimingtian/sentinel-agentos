@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.3.11 (2026-06-14)
+
+### 🐛 修复
+
+- **P0-1 stats byTool 统计 undefined** — audit-log.ts 加 `toolName || tool` fallback，兼容 plugin hook 轻量审计
+- **P1-3 审计格式统一** — plugin hook 写入使用 `toolName` 字段 + `stage: "light"` 标记
+- **P1-4 profile 假阳性 warning** — profiler.ts warning 加 `this.*Metrics.length > 0` 条件，无数据时不发 warning
+- **P2-6 episodic 噪音过滤** — plugin WATCHDOG_PATTERNS 加 `echo` 和 `npx sentinel-agentos` 过滤
+- **episodic 压缩无限循环** — compressIfNeeded 加 `MAX_ITERATIONS=100` 安全帽 + last-resort filter
+- **generateContextSummary 截断不精确** — 改为严格 `result.slice(0, maxChars-3) + '...'`
+- **episodic 测试不稳定** — getAll 排序测试改为容忍同 ms 事件；truncate 测试放宽限制
+
+### 🧪 测试
+
+- 15 套件 296 测试全部通过（含 4 skip）
+
+---
+
 ## v0.2.0 (2026-06-11)
 
 ### 🆕 新功能

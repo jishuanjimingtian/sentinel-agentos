@@ -1701,7 +1701,37 @@ sentinel.postCheck('exec', { command: 'npm test' }, 'all passed');
 | `maxWorkingTokens` | number | `50000` | 工作记忆 token 上限 |
 | `preRegisteredRules` | boolean | `false` | 是否使用内置默认规则 |
 
-#### `sentinelPlugin` — OpenClaw 插件
+#### OpenClaw Plugin 接入 — 推荐方案
+
+通过 `openclaw plugins install` 安装为 OpenClaw 原生插件，框架层自动拦截所有工具调用。
+
+```bash
+# 安装（从源码目录）
+openclaw plugins install ./plugins/sentinel-agentos
+
+# 验证
+openclaw plugins list | grep sentinel-agentos
+
+# 重启 gateway
+openclaw gateway restart
+```
+
+**接入后自动注册 3 个 hook，Agent 用户完全无感**：
+
+| Hook | 优先级 | 功能 |
+|------|:--:|------|
+| `before_tool_call` | P100 | 危险命令拦截(9 pattern) + 敏感文件拦截(16 pattern) + 保护文件确认(11 pattern) + JSON/YAML 语法校验 |
+| `after_tool_call` | P90 | 异步轻量审计 + episodic memory 记录 + feedback 信号 + circuit breaker 熔断(500ms 超时,5 次异常熔断 5 分钟) |
+| `session_start` | — | 注入 Semantic Memory 上下文到 Agent prompt |
+
+**安装位置**: `~/.openclaw/extensions/sentinel-agentos/`（统一管理,可通过 `openclaw plugins uninstall` 卸载）
+
+**安全特性**：
+- 🔄 异步非阻塞 — 审计和 memory 记录不阻塞 Agent 回复
+- ⚡ 降级保护 — agentOS 未就绪或 circuit breaker 打开时仍写入轻量审计行
+- 📊 全栈可见 — `npx sentinel-agentos stats/profile/audit` 查看所有指标
+
+#### `sentinelPlugin` — 编程方式接入
 
 ```typescript
 import { sentinelPlugin } from 'sentinel-agentos';

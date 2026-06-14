@@ -124,7 +124,8 @@ export class AuditLog {
     const sessions = new Set<string>();
 
     for (const entry of entries) {
-      byTool[entry.toolName] = (byTool[entry.toolName] || 0) + 1;
+      const tName = entry.toolName || (entry as unknown as Record<string, unknown>).tool as string;
+      byTool[tName] = (byTool[tName] || 0) + 1;
       totalScore += entry.riskGate?.score ?? 0;
       if (entry.verifyGate?.status === 'FAIL') verifyFailures++;
       if ((entry.riskGate?.score ?? 0) > 3.0) highRiskOps++;
