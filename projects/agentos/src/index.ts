@@ -1,2 +1,29 @@
 export { AgentOS } from './core';
 export * from './types';
+export { SchemaGate } from './guard/schema-gate';
+export type { SchemaRule } from './guard/schema-gate';
+export { RiskGate } from './guard/risk-gate';
+export type { RiskThresholds, ToolRiskProfile, ImpactLevel, SensitivityLevel } from './guard/risk-gate';
+export { DEFAULT_RISK_THRESHOLDS } from './guard/risk-gate';
+export { SnapshotGate, VerifyGate } from './guard/snapshot-verify';
+export type { SnapshotScope } from './guard/snapshot-verify';
+export { AuditLog } from './guard/audit-log';
+export { SandboxExecutor } from './guard/sandbox';
+export type { ExecutionContext, SandboxResult, ExecutionMode, NetworkPolicy } from './guard/sandbox';
+export { SandboxViolation } from './guard/sandbox';
+export { WorkingMemory } from './memory/working';
+export type { WorkingMemoryState } from './memory/working';
+export { EpisodicMemory } from './memory/episodic';
+export { SemanticMemoryStore } from './memory/semantic';
+export { PreExecEvaluator, RuntimeEvaluator, PostExecEvaluator } from './evaluator/exec-evaluator';
+export { ImplicitFeedbackEngine } from './evaluator/feedback';
+export { AgentProfiler } from './evaluator/profiler';
+export type { AgentProfile } from './evaluator/profiler';
+export { AgentOSAPI } from './api';
+
+// --- Integration Layer ---
+export { createServer } from './server';
+export { wrapAgent } from './middleware/wrapper';
+export type { WrappedAgent } from './middleware/wrapper';
+export { sentinelPlugin } from './middleware/openclaw';
+export type { OpenClawPlugin } from './middleware/openclaw';
