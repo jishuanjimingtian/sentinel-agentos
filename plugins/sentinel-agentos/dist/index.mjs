@@ -10,6 +10,7 @@ const CB_THRESHOLD = 5;
 const CB_COOLDOWN_MS = 3e5;
 let cbOpenUntil = 0;
 let cbTotalTrips = 0;
+let lastAIMessage = "";
 const recentAuditKeys = /* @__PURE__ */ new Set();
 let auditKeyCleanupTs = 0;
 function detectWorkspace() {
@@ -257,9 +258,24 @@ const plugin = definePluginEntry({
     }
     auditFilePath = rotateAuditLog(auditDir);
     initAgentOSAsync();
+    api.on("before_prompt_build", async (event) => {
+      try {
+        const msgs = event?.messages ?? [];
+        const userMsgs = msgs.filter((m) => m.role === "user" && typeof m.content === "string").slice(-2);
+        if (userMsgs.length > 0) {
+          lastAIMessage = userMsgs.map(
+            (m) => m.content.slice(0, 200)
+          ).join(" | ");
+        }
+      } catch {
+      }
+    });
     api.on("before_tool_call", async (event) => {
       const { toolName, params } = event;
       const p = params?.path || params?.file || "";
+      const contextHint = lastAIMessage ? `
+
+\u{1F4CB} \u6700\u8FD1\u4EFB\u52A1: ${lastAIMessage}` : "";
       if (toolName === "exec" && params?.command) {
         const cmd = String(params.command);
         const expandedCmd = expandNodeEval(cmd);
@@ -271,7 +287,7 @@ const plugin = definePluginEntry({
                 title: "\u{1F6AB} Sentinel \u62E6\u622A",
                 description: `Sentinel: ${desc}
 
-\u547D\u4EE4: ${cmd.substring(0, 200)}`,
+\u547D\u4EE4: ${cmd.substring(0, 200)}${contextHint}`,
                 severity: "critical",
                 timeoutMs: 6e4,
                 timeoutBehavior: "deny"
@@ -286,7 +302,7 @@ const plugin = definePluginEntry({
                 title: "\u26A0\uFE0F \u9700\u8981\u786E\u8BA4",
                 description: `Sentinel: ${desc}
 
-\u547D\u4EE4: ${cmd.substring(0, 200)}`,
+\u547D\u4EE4: ${cmd.substring(0, 200)}${contextHint}`,
                 severity: "warning",
                 timeoutMs: 6e4,
                 timeoutBehavior: "deny"
@@ -308,7 +324,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "\u26A0\uFE0F \u4FEE\u6539\u6838\u5FC3\u914D\u7F6E",
-                description: `Sentinel: \u6587\u4EF6 "${p}" \u53D7\u4FDD\u62A4\uFF0C\u4FEE\u6539\u53EF\u80FD\u5BFC\u81F4\u7CFB\u7EDF\u4E0D\u53EF\u7528\u3002\u786E\u8BA4\u7EE7\u7EED\uFF1F`,
+                description: `Sentinel: \u6587\u4EF6 "${p}" \u53D7\u4FDD\u62A4\uFF0C\u4FEE\u6539\u53EF\u80FD\u5BFC\u81F4\u7CFB\u7EDF\u4E0D\u53EF\u7528\u3002\u786E\u8BA4\u7EE7\u7EED\uFF1F${contextHint}`,
                 severity: "warning",
                 timeoutMs: 6e4,
                 timeoutBehavior: "deny"

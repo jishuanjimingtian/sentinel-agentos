@@ -41,6 +41,9 @@ const CB_COOLDOWN_MS = 300_000; // 5 分钟
 let cbOpenUntil = 0;
 let cbTotalTrips = 0;
 
+// ── 上一次 AI 消息摘要（用于弹窗上下文） ──
+let lastAIMessage = "";
+
 // ── 审计去重 ──
 const recentAuditKeys = new Set<string>();
 let auditKeyCleanupTs = 0;
@@ -350,6 +353,24 @@ const plugin = definePluginEntry({
     initAgentOSAsync();
 
     // ══════════════════════════════════
+    // Hook 0: 捕获最近对话上下文（用于弹窗意图提示）
+    // ══════════════════════════════════
+    api.on("before_prompt_build", async (event: any) => {
+      try {
+        const msgs: any[] = event?.messages ?? [];
+        // 取最近 2 条用户消息作为上下文
+        const userMsgs = msgs
+          .filter((m: any) => m.role === "user" && typeof m.content === "string")
+          .slice(-2);
+        if (userMsgs.length > 0) {
+          lastAIMessage = userMsgs.map((m: any) =>
+            (m.content as string).slice(0, 200)
+          ).join(" | ");
+        }
+      } catch { /* 非关键 */ }
+    });
+
+    // ══════════════════════════════════
     // Hook 1: before_tool_call — 确定性拦截 (P100)
     //
     // 纯内存、纯正则、零 I/O。
@@ -359,6 +380,11 @@ const plugin = definePluginEntry({
     api.on("before_tool_call", async (event: ToolCallEvent) => {
       const { toolName, params } = event;
       const p = (params as Record<string, unknown>)?.path || (params as Record<string, unknown>)?.file || "";
+
+      // 构建上下文提示
+      const contextHint = lastAIMessage
+        ? `\n\n📋 最近任务: ${lastAIMessage}`
+        : "";
 
       // ── 危险命令拦截 ──
       if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
@@ -371,7 +397,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "🚫 Sentinel 拦截",
-                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}`,
+                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}${contextHint}`,
                 severity: "critical" as const,
                 timeoutMs: 60_000,
                 timeoutBehavior: "deny" as const,
@@ -384,7 +410,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "⚠️ 需要确认",
-                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}`,
+                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}${contextHint}`,
                 severity: "warning" as const,
                 timeoutMs: 60_000,
                 timeoutBehavior: "deny" as const,
@@ -410,7 +436,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "⚠️ 修改核心配置",
-                description: `Sentinel: 文件 "${p}" 受保护，修改可能导致系统不可用。确认继续？`,
+                description: `Sentinel: 文件 "${p}" 受保护，修改可能导致系统不可用。确认继续？${contextHint}`,
                 severity: "warning" as const,
                 timeoutMs: 60_000,
                 timeoutBehavior: "deny" as const,
