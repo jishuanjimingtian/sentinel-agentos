@@ -26,12 +26,17 @@ function globMatch(pattern, filepath) {
 function dateStamp() {
   return (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
 }
+let pluginApi = null;
 function log(msg) {
   const cbState = cbOpenUntil > Date.now() ? " [CB:OPEN]" : consecutiveErrors > 0 ? ` [CB:${consecutiveErrors}/${CB_THRESHOLD}]` : "";
-  console.log(`[Sentinel]${cbState} ${msg}`);
+  const text = `[Sentinel]${cbState} ${msg}`;
+  if (pluginApi?.logger?.info) pluginApi.logger.info(text);
+  else console.log(text);
 }
 function warn(msg) {
-  console.warn(`[Sentinel] ${msg}`);
+  const text = `[Sentinel] ${msg}`;
+  if (pluginApi?.logger?.warn) pluginApi.logger.warn(text);
+  else console.warn(text);
 }
 function cbIsOpen() {
   if (cbOpenUntil === 0) return false;
@@ -116,20 +121,55 @@ function auditFlush() {
   });
 }
 const DANGEROUS_COMMANDS = [
+  // ── Linux 高危 ──
   [/rm\s+-rf\s+\//, "rm -rf / \u2014 \u5220\u9664\u6574\u4E2A\u7CFB\u7EDF"],
   [/sudo\s+rm/, "sudo rm \u2014 \u63D0\u6743\u5220\u9664"],
   [/chmod\s+777/, "chmod 777 \u2014 \u5F00\u653E\u6240\u6709\u6743\u9650"],
+  [/mv\s+\/[^\s]*\s+\/dev\/null/, "mv ... /dev/null \u2014 \u7834\u574F\u5173\u952E\u8DEF\u5F84"],
+  [/:\{\s*:\|[\s]*:&\s*\};?\s*:/, "Fork Bomb \u2014 \u8017\u5C3D\u7CFB\u7EDF\u8D44\u6E90"],
+  [/>\s*\/dev\/sd[a-z]\d*/, "\u8986\u76D6\u78C1\u76D8\u8BBE\u5907 \u2014 \u7834\u574F\u5206\u533A\u8868"],
+  [/dd\s+if=.+\s+of=\/dev\/sd/, "dd \u5199\u5165\u78C1\u76D8\u8BBE\u5907 \u2014 \u8986\u76D6\u5206\u533A"],
+  // ── Windows 高危 ──
   [/del\s+\/f\s+\/s/, "del /f /s \u2014 \u5F3A\u5236\u9012\u5F52\u5220\u9664"],
+  [/rd\s+\/s\s+\/q\s+[A-Z]:\\/, "rd /s /q C:\\ \u2014 \u9012\u5F52\u5220\u9664\u76D8\u7B26"],
+  [/Remove-Item\s.*-Recurse\s.*-Force/, "Remove-Item -Recurse -Force \u2014 PowerShell \u9012\u5F52\u5220\u9664"],
   [/format\s+[a-z]:/, "format \u2014 \u683C\u5F0F\u5316\u78C1\u76D8"],
+  [/cipher\s+\/w/, "cipher /w \u2014 \u5B89\u5168\u64E6\u9664\u78C1\u76D8\u7A7A\u95F4"],
+  // ── Docker 逃逸 ──
+  [/docker\s+run\s+.*-v\s+\/\s*:\s*\/host/, "docker run -v /:/host \u2014 \u6302\u8F7D\u5BBF\u4E3B\u673A\u6839\u76EE\u5F55"],
+  [/docker\s+run\s+.*--privileged/, "docker run --privileged \u2014 \u7279\u6743\u5BB9\u5668"],
+  [/docker\s+exec\s+-it/, "docker exec -it \u2014 \u8FDB\u5165\u8FD0\u884C\u4E2D\u5BB9\u5668"],
+  // ── 数据库高危 ──
+  [/DROP\s+DATABASE\b/, "DROP DATABASE \u2014 \u5220\u9664\u6570\u636E\u5E93"],
+  [/DROP\s+TABLE\b/, "DROP TABLE \u2014 \u5220\u9664\u8868"],
+  [/TRUNCATE\s+(TABLE\s+)?\w+/, "TRUNCATE \u2014 \u6E05\u7A7A\u8868\u6570\u636E"],
+  // ── 网络外泄 ──
+  [/nc\s+-e/, "nc -e \u2014 \u53CD\u5411 Shell"],
+  [/powershell\s+(Invoke-WebRequest|iwr)\s.*-OutFile/, "PowerShell \u4E0B\u8F7D\u6587\u4EF6\u5230\u672C\u5730"],
+  // ── 编码逃逸 ──
+  [/base64\s.*-d\s*\|/, "base64 \u89E3\u7801\u7BA1\u9053 \u2014 \u7F16\u7801\u9003\u9038"],
+  [/echo\s+[A-Za-z0-9+/=]{20,}\s*\|\s*base64/, "base64 \u5185\u8054\u89E3\u7801 \u2014 \u7F16\u7801\u9003\u9038"],
+  // ── 管道执行 ──
   [/\|\s*sh$/, "\u7BA1\u9053\u5230 sh \u2014 \u6267\u884C\u672A\u77E5\u811A\u672C"],
+  [/\|\s*bash$/, "\u7BA1\u9053\u5230 bash \u2014 \u6267\u884C\u672A\u77E5\u811A\u672C"],
   [/curl\s+.*\|\s*(ba)?sh/, "curl | sh \u2014 \u6267\u884C\u8FDC\u7A0B\u811A\u672C"],
   [/wget\s+.*-O\s*-\s*\|/, "wget \u7BA1\u9053 \u2014 \u6267\u884C\u8FDC\u7A0B\u811A\u672C"]
 ];
 const WARNING_COMMANDS = [
+  // ── Git 高危 ──
   [/git\s+push\s+--force/, "git push --force \u2014 \u5F3A\u5236\u63A8\u9001"],
+  [/git\s+push\s+-f\b/, "git push -f \u2014 \u5F3A\u5236\u63A8\u9001"],
   [/git\s+reset\s+--hard/, "git reset --hard \u2014 \u786C\u91CD\u7F6E"],
+  [/git\s+commit\s+--amend\s+--no-edit/, "git commit --amend \u2014 \u4FEE\u6539\u63D0\u4EA4\u5386\u53F2"],
+  [/git\s+rebase\s+-i/, "git rebase -i \u2014 \u4EA4\u4E92\u5F0F\u53D8\u57FA"],
+  // ── 包管理器 ──
   [/npm\s+publish/, "npm publish \u2014 \u53D1\u5E03\u5230 npm \u4ED3\u5E93"],
   [/npm\s+unpublish/, "npm unpublish \u2014 \u4E0B\u67B6\u5305"],
+  [/pip\s+install/, "pip install \u2014 \u5B89\u88C5 Python \u5305"],
+  [/gem\s+install/, "gem install \u2014 \u5B89\u88C5 Ruby \u5305"],
+  [/cargo\s+install/, "cargo install \u2014 \u5B89\u88C5 Rust \u5305"],
+  [/go\s+install\b/, "go install \u2014 \u5B89\u88C5 Go \u5305"],
+  // ── Docker 警告 ──
   [/docker\s+rm/, "docker rm \u2014 \u5220\u9664\u5BB9\u5668"],
   [/docker\s+system\s+prune/, "docker system prune \u2014 \u6E05\u7406 Docker"]
 ];
@@ -251,6 +291,7 @@ const plugin = definePluginEntry({
   name: "Sentinel AgentOS",
   description: "\u786E\u5B9A\u6027 Guard + \u5206\u5C42\u8BB0\u5FC6 + \u81EA\u52A8\u8BC4\u4F30 (\u5B89\u5168\u63A5\u5165\u7248 v1.1)",
   register(api) {
+    pluginApi = api;
     workspaceRoot = detectWorkspace();
     const auditDir = path.join(workspaceRoot, ".agentos");
     try {

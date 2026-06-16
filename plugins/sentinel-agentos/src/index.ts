@@ -1,5 +1,5 @@
 /**
- * Sentinel AgentOS OpenClaw Plugin (v1.0.7)
+ * Sentinel AgentOS OpenClaw Plugin (v1.0.6)
  *
  * 安全接入版：同步审计 + 可配置规则 + 弹窗上下文
  *
@@ -74,13 +74,19 @@ function dateStamp(): string {
 }
 
 /** 输出日志，带 circuit-breaker 状态 */
+let pluginApi: any = null;  // register 时注入
+
 function log(msg: string): void {
   const cbState = cbOpenUntil > Date.now() ? " [CB:OPEN]" : consecutiveErrors > 0 ? ` [CB:${consecutiveErrors}/${CB_THRESHOLD}]` : "";
-  console.log(`[Sentinel]${cbState} ${msg}`);
+  const text = `[Sentinel]${cbState} ${msg}`;
+  if (pluginApi?.logger?.info) pluginApi.logger.info(text);
+  else console.log(text);
 }
 
 function warn(msg: string): void {
-  console.warn(`[Sentinel] ${msg}`);
+  const text = `[Sentinel] ${msg}`;
+  if (pluginApi?.logger?.warn) pluginApi.logger.warn(text);
+  else console.warn(text);
 }
 
 // ═══════════════════════════════════════
@@ -196,21 +202,56 @@ function auditFlush(): void {
 // ═══════════════════════════════════════
 
 const DANGEROUS_COMMANDS: Array<[RegExp, string]> = [
+  // ── Linux 高危 ──
   [/rm\s+-rf\s+\//, "rm -rf / — 删除整个系统"],
   [/sudo\s+rm/, "sudo rm — 提权删除"],
   [/chmod\s+777/, "chmod 777 — 开放所有权限"],
+  [/mv\s+\/[^\s]*\s+\/dev\/null/, "mv ... /dev/null — 破坏关键路径"],
+  [/:\{\s*:\|[\s]*:&\s*\};?\s*:/, "Fork Bomb — 耗尽系统资源"],
+  [/>\s*\/dev\/sd[a-z]\d*/, "覆盖磁盘设备 — 破坏分区表"],
+  [/dd\s+if=.+\s+of=\/dev\/sd/, "dd 写入磁盘设备 — 覆盖分区"],
+  // ── Windows 高危 ──
   [/del\s+\/f\s+\/s/, "del /f /s — 强制递归删除"],
+  [/rd\s+\/s\s+\/q\s+[A-Z]:\\/, "rd /s /q C:\\ — 递归删除盘符"],
+  [/Remove-Item\s.*-Recurse\s.*-Force/, "Remove-Item -Recurse -Force — PowerShell 递归删除"],
   [/format\s+[a-z]:/, "format — 格式化磁盘"],
+  [/cipher\s+\/w/, "cipher /w — 安全擦除磁盘空间"],
+  // ── Docker 逃逸 ──
+  [/docker\s+run\s+.*-v\s+\/\s*:\s*\/host/, "docker run -v /:/host — 挂载宿主机根目录"],
+  [/docker\s+run\s+.*--privileged/, "docker run --privileged — 特权容器"],
+  [/docker\s+exec\s+-it/, "docker exec -it — 进入运行中容器"],
+  // ── 数据库高危 ──
+  [/DROP\s+DATABASE\b/, "DROP DATABASE — 删除数据库"],
+  [/DROP\s+TABLE\b/, "DROP TABLE — 删除表"],
+  [/TRUNCATE\s+(TABLE\s+)?\w+/, "TRUNCATE — 清空表数据"],
+  // ── 网络外泄 ──
+  [/nc\s+-e/, "nc -e — 反向 Shell"],
+  [/powershell\s+(Invoke-WebRequest|iwr)\s.*-OutFile/, "PowerShell 下载文件到本地"],
+  // ── 编码逃逸 ──
+  [/base64\s.*-d\s*\|/, "base64 解码管道 — 编码逃逸"],
+  [/echo\s+[A-Za-z0-9+/=]{20,}\s*\|\s*base64/, "base64 内联解码 — 编码逃逸"],
+  // ── 管道执行 ──
   [/\|\s*sh$/, "管道到 sh — 执行未知脚本"],
+  [/\|\s*bash$/, "管道到 bash — 执行未知脚本"],
   [/curl\s+.*\|\s*(ba)?sh/, "curl | sh — 执行远程脚本"],
   [/wget\s+.*-O\s*-\s*\|/, "wget 管道 — 执行远程脚本"],
 ];
 
 const WARNING_COMMANDS: Array<[RegExp, string]> = [
+  // ── Git 高危 ──
   [/git\s+push\s+--force/, "git push --force — 强制推送"],
+  [/git\s+push\s+-f\b/, "git push -f — 强制推送"],
   [/git\s+reset\s+--hard/, "git reset --hard — 硬重置"],
+  [/git\s+commit\s+--amend\s+--no-edit/, "git commit --amend — 修改提交历史"],
+  [/git\s+rebase\s+-i/, "git rebase -i — 交互式变基"],
+  // ── 包管理器 ──
   [/npm\s+publish/, "npm publish — 发布到 npm 仓库"],
   [/npm\s+unpublish/, "npm unpublish — 下架包"],
+  [/pip\s+install/, "pip install — 安装 Python 包"],
+  [/gem\s+install/, "gem install — 安装 Ruby 包"],
+  [/cargo\s+install/, "cargo install — 安装 Rust 包"],
+  [/go\s+install\b/, "go install — 安装 Go 包"],
+  // ── Docker 警告 ──
   [/docker\s+rm/, "docker rm — 删除容器"],
   [/docker\s+system\s+prune/, "docker system prune — 清理 Docker"],
 ];
@@ -341,6 +382,7 @@ const plugin = definePluginEntry({
   description: "确定性 Guard + 分层记忆 + 自动评估 (安全接入版 v1.1)",
 
   register(api) {
+    pluginApi = api;
     workspaceRoot = detectWorkspace();
 
     // 确保审计目录存在（同步，极快）
