@@ -1,4 +1,3 @@
-// Sentinel AgentOS Plugin v1.1.2 — compiled 2026-06-16 09:14
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
 import { AgentOS } from "sentinel-agentos";
 import * as path from "node:path";
