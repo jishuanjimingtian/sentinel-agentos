@@ -1,7 +1,7 @@
 /**
- * Sentinel AgentOS OpenClaw Plugin (v1.1.0)
+ * Sentinel AgentOS OpenClaw Plugin (v1.0.7)
  *
- * 安全接入版：异步非阻塞 + circuit breaker + 审计 rotate + 去重
+ * 安全接入版：同步审计 + 可配置规则 + 弹窗上下文
  *
  * Hook 生命周期:
  * - before_tool_call (priority 100): 确定性拦截，纯内存，零 I/O，永不阻塞
@@ -59,11 +59,12 @@ function detectWorkspace(): string {
 }
 
 function globMatch(pattern: string, filepath: string): boolean {
+  const SENTINEL = "\x00";
   const p = pattern
     .replace(/\./g, "\\.")
-    .replace(/\*\*/g, "§§")
+    .replace(/\*\*/g, `${SENTINEL}**${SENTINEL}`)
     .replace(/\*/g, "[^/\\\\]*")
-    .replace(/§§/g, ".*");
+    .replace(new RegExp(`${SENTINEL}\\*\\*${SENTINEL}`, "g"), ".*");
   return new RegExp(`(^|[/\\\\])${p}$`, "i").test(filepath);
 }
 

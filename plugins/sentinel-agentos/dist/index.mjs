@@ -19,7 +19,8 @@ function detectWorkspace() {
   return path.join(home, ".openclaw", "workspace");
 }
 function globMatch(pattern, filepath) {
-  const p = pattern.replace(/\./g, "\\.").replace(/\*\*/g, "\xA7\xA7").replace(/\*/g, "[^/\\\\]*").replace(/§§/g, ".*");
+  const SENTINEL = "\0";
+  const p = pattern.replace(/\./g, "\\.").replace(/\*\*/g, `${SENTINEL}**${SENTINEL}`).replace(/\*/g, "[^/\\\\]*").replace(new RegExp(`${SENTINEL}\\*\\*${SENTINEL}`, "g"), ".*");
   return new RegExp(`(^|[/\\\\])${p}$`, "i").test(filepath);
 }
 function dateStamp() {
