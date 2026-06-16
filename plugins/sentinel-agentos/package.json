@@ -1,6 +1,6 @@
 {
   "name": "sentinel-agentos-plugin",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "Sentinel AgentOS - OpenClaw plugin: deterministic Guard + layered Memory + auto Evaluation",
   "type": "module",
   "main": "dist/index.mjs",
@@ -9,7 +9,7 @@
   },
   "files": ["dist/", "README.md"],
   "scripts": {
-    "build": "tsc"
+    "build": "esbuild src/index.ts --format=esm --platform=node --target=node20 --outfile=dist/index.mjs --sourcemap"
   },
   "dependencies": {
     "sentinel-agentos": "^0.3.10"

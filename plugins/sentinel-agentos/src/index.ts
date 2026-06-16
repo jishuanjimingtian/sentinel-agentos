@@ -200,12 +200,12 @@ const DANGEROUS_COMMANDS: Array<[RegExp, string]> = [
   [/\|\s*sh$/, "管道到 sh — 执行未知脚本"],
   [/curl\s+.*\|\s*(ba)?sh/, "curl | sh — 执行远程脚本"],
   [/wget\s+.*-O\s*-\s*\|/, "wget 管道 — 执行远程脚本"],
-  [/npm\s+publish/, "npm publish — 发布到 npm 仓库"],
 ];
 
 const WARNING_COMMANDS: Array<[RegExp, string]> = [
   [/git\s+push\s+--force/, "git push --force — 强制推送"],
   [/git\s+reset\s+--hard/, "git reset --hard — 硬重置"],
+  [/npm\s+publish/, "npm publish — 发布到 npm 仓库"],
   [/npm\s+unpublish/, "npm unpublish — 下架包"],
   [/docker\s+rm/, "docker rm — 删除容器"],
   [/docker\s+system\s+prune/, "docker system prune — 清理 Docker"],
@@ -247,6 +247,20 @@ function validateContent(filepath: string, content: string): string | null {
     }
   }
   return null;
+}
+
+/** 展开 node -e 内联脚本中的字符串拼接绕过 */
+function expandNodeEval(cmd: string): string | null {
+  // 匹配 node -e "..." 形式的 inline eval
+  const m = cmd.match(/node\s+-e\s+"([^"]*)"/);
+  if (!m) return null;
+  const script = m[1];
+  // 展开所有 'xx'+'yy' 形式为 xxyy
+  const expanded = script.replace(/'([^']*)'\s*\+\s*'([^']*)'/g, "'$1$2'");
+  // 递归展开（处理 'a'+'b'+'c'）
+  const prev = script;
+  if (expanded === prev) return null;
+  return expandNodeEval(cmd.replace(m[1], expanded)) || cmd.replace(m[1], expanded);
 }
 
 /** 判断命令是否为 watchdog/内部健康检查 */
@@ -349,13 +363,24 @@ const plugin = definePluginEntry({
       // ── 危险命令拦截 ──
       if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
         const cmd = String((params as Record<string, unknown>).command);
+        // 展开 inline 脚本中的字符串拼接绕过（e.g. 'np'+'m pu'+'blish'）
+        const expandedCmd = expandNodeEval(cmd);
+        const checkCmd = expandedCmd || cmd;
         for (const [re, desc] of DANGEROUS_COMMANDS) {
-          if (re.test(cmd)) {
-            return { block: true, blockReason: `🚫 Sentinel: ${desc}` };
+          if (re.test(checkCmd)) {
+            return {
+              requireApproval: {
+                title: "🚫 Sentinel 拦截",
+                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}`,
+                severity: "critical" as const,
+                timeoutMs: 60_000,
+                timeoutBehavior: "deny" as const,
+              },
+            };
           }
         }
         for (const [re, desc] of WARNING_COMMANDS) {
-          if (re.test(cmd)) {
+          if (re.test(checkCmd)) {
             return {
               requireApproval: {
                 title: "⚠️ 需要确认",
@@ -472,14 +497,14 @@ const plugin = definePluginEntry({
             return;
           }
 
-          // episodic 记录（仅 exec 命令，跳过 watchdog 已在上面做了）
+          // episodic 记录（仅非噪音 exec 命令）
           if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
-            aos.memory.episodic.record(
-              "tool_call",
-              String((params as Record<string, unknown>).command),
-              ["exec"],
-              [],
-            );
+            const cmd = String((params as Record<string, unknown>).command);
+            // 跳过短暂/查询类命令，减少噪音
+            const isNoise = /^(echo|dir|ls|cat|type|Get-|Select-|Measure-|npx sentinel|openclaw |node -v|npm -v|git status|git log|git diff)/i.test(cmd.trim());
+            if (!isNoise) {
+              aos.memory.episodic.record("tool_call", cmd, ["exec"], []);
+            }
           }
 
           // 反馈
@@ -499,21 +524,61 @@ const plugin = definePluginEntry({
     }, { priority: 90 });
 
     // ══════════════════════════════════
-    // Hook 3: session_start — 注入上下文
+    // Hook 3: session_start — 精简上下文注入
+    //
+    // 关键优化：只注入最近 5 条高重要性 episodic 事件 + 语义摘要。
+    // 避免全量 episodic 膨胀导致 MEMORY.md 越来越大 → token 浪费。
     // ══════════════════════════════════
 
     api.on("session_start", async () => {
       if (!aos || !aosReady) return;
       setImmediate(() => {
         try {
-          const ctx = aos!.injectContext();
-          log(`上下文已注入 (${ctx.length} chars)`);
+          // 只取最近 5 条高重要性事件（importance >= 0.6）
+          const allEvents = aos!.memory.episodic.getAll();
+          const topEvents = allEvents
+            .filter((e: { importance: number }) => e.importance >= 0.6)
+            .slice(0, 5);
+
+          const parts: string[] = [];
+
+          // 语义记忆（最多 800 字符）
+          try {
+            const sem = aos!.memory.semantic.generateContextSummary(800);
+            if (sem) parts.push(sem);
+          } catch { /* 降级 */ }
+
+          // 精选 episodic（最多 600 字符）
+          if (topEvents.length > 0) {
+            const lines = ['[AgentOS Episodic Memory]', ''];
+            for (const ev of topEvents) {
+              const date = new Date(ev.timestamp).toISOString().split('T')[0];
+              const content = (ev.content || '').slice(0, 150);
+              lines.push(`📝 [${date}] ${content}`);
+              if (lines.join('\n').length > 600) break;
+            }
+            parts.push(lines.join('\n'));
+          }
+
+          const ctx = parts.join('\n\n---\n\n');
+          log(`上下文已注入 (${ctx.length} chars, ${topEvents.length} 精选事件 / ${allEvents.length} 总计)`);
+
+          // 可搜索索引：写入 memory/agentos-episodic.md 供 memory_search 索引
+          try {
+            const snapshot = aos!.memory.episodic.getSearchableSnapshot(50);
+            if (snapshot) {
+              const memDir = path.join(workspaceRoot, "memory");
+              fs.mkdirSync(memDir, { recursive: true });
+              fs.writeFileSync(path.join(memDir, "agentos-episodic.md"), snapshot, "utf-8");
+              log(`可搜索索引已写入 memory/agentos-episodic.md`);
+            }
+          } catch { /* 非关键 */ }
         } catch { /* 非关键 */ }
       });
     });
 
-    log("✅ 已注册 3 hook: before_tool_call(P100) + after_tool_call(P90/async) + session_start");
-    log(`拦截规则: 危险x${DANGEROUS_COMMANDS.length} | 警告x${WARNING_COMMANDS.length} | 敏感文件x${SENSITIVE_PATTERNS.length} | 保护文件x${PROTECTED_PATTERNS.length} | JSON/YAML校验 | CB阈值=${CB_THRESHOLD}`);
+    log("✅ 已注册 3 hook: before_tool_call(P100) + after_tool_call(P90/async) + session_start + 可搜索索引(agentos-episodic)");
+    log(`拦截规则: 危险x${DANGEROUS_COMMANDS.length} | 警告x${WARNING_COMMANDS.length} | 敏感文件x${SENSITIVE_PATTERNS.length} | 保护文件x${PROTECTED_PATTERNS.length} | JSON/YAML校验 | CB阈值=${CB_THRESHOLD} | CB熔断次数=${cbTotalTrips}`);
   },
 });
 

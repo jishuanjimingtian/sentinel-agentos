@@ -1,0 +1,11 @@
+{
+  "id": "sentinel-agentos",
+  "name": "Sentinel AgentOS",
+  "version": "1.0.3",
+  "description": "Deterministic Guard + layered Memory + auto Evaluation for agent tool calls",
+  "entry": "dist/index.mjs",
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {}
+}
