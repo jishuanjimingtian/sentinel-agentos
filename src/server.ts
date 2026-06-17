@@ -30,20 +30,135 @@
 
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import * as path from 'path';
 import { AgentOS } from './core';
 import type { SchemaRule } from './guard/schema-gate';
+import { DashboardAPI } from './dashboard/api';
+import { AuditAnalyzer } from './audit-analyzer';
+import { findAuditFile, loadAuditEntries } from './dashboard/audit-source';
+import { parseToolParameters, resolveEntryRisk } from './dashboard/entry-risk';
+
+function extractTimelineParams(e: Record<string, unknown>): string {
+  const obj = parseToolParameters(e.toolParameters ?? e.params);
+  if (!obj) return '';
+
+  if (typeof obj.command === 'string') return obj.command;
+  if (typeof obj.value === 'string') return obj.value;
+  if (typeof obj.path === 'string') {
+    if (obj.content != null) {
+      return JSON.stringify({ path: obj.path, content: obj.content });
+    }
+    return obj.path;
+  }
+  if (Array.isArray(obj.edits)) {
+    const edits = obj.edits as Array<{ oldText?: string; newText?: string }>;
+    return JSON.stringify({
+      path: obj.path ?? obj.file ?? '',
+      edits: edits.length,
+      preview: edits[0]?.oldText?.slice(0, 100) ?? edits[0]?.newText?.slice(0, 100) ?? '',
+    });
+  }
+  if (typeof obj.preview === 'string') {
+    return JSON.stringify({
+      path: obj.path ?? obj.file ?? '',
+      preview: obj.preview.slice(0, 120),
+    });
+  }
+
+  const s = JSON.stringify(obj);
+  return s.length > 320 ? s.slice(0, 320) + '…' : s;
+}
+
+function extractSessionId(e: Record<string, unknown>): string | null {
+  if (typeof e.sessionId === 'string' && e.sessionId) return e.sessionId;
+  const obj = parseToolParameters(e.toolParameters ?? e.params);
+  if (obj && typeof obj.sessionId === 'string') return obj.sessionId;
+  const raw = String(e.toolParameters ?? e.params ?? '');
+  const m = raw.match(/"sessionId"\s*:\s*"([^"]+)"/);
+  return m?.[1] ?? null;
+}
+
+function toolPassRate(entries: Record<string, unknown>[], match: (tool: string) => boolean): number | null {
+  const subset = entries.filter((e) => match(String(e.tool || e.toolName || '')));
+  if (!subset.length) return null;
+  const passed = subset.filter((e) => e.ok !== false).length;
+  return Math.round((passed / subset.length) * 100);
+}
+
+function buildAuditReport(entries: Record<string, unknown>[]) {
+  const total = entries.length;
+  const fails = entries.filter((e) => e.ok === false || (e as { verifyGate?: { status?: string } }).verifyGate?.status === 'FAIL').length;
+  const passes = total - fails;
+  const passRate = total > 0 ? Math.round((passes / total) * 100) : 0;
+  const highRisk = entries.filter((e) => resolveEntryRisk(e) > 5).length;
+
+  const sessions = new Set<string>();
+  for (const e of entries) {
+    const sid = extractSessionId(e);
+    if (sid) sessions.add(sid);
+  }
+  const activeDays = new Set(
+    entries.map((e) => String(e.ts ?? e.completedAt ?? '').slice(0, 10)).filter(Boolean),
+  );
+
+  const preExecScore = passRate;
+  const postExecScore = toolPassRate(entries, (t) => ['write', 'edit', 'exec'].includes(t)) ?? passRate;
+  const satisfaction = toolPassRate(entries, (t) => ['read', 'memory_search', 'memory_get', 'web_search', 'web_fetch'].includes(t)) ?? passRate;
+  const overallScore = Math.round(preExecScore * 0.4 + postExecScore * 0.35 + satisfaction * 0.25);
+
+  const timelineLimit = 50;
+  const timeline = entries.slice(-timelineLimit).map((e) => {
+    const failed = e.ok === false || (e as { verifyGate?: { status?: string } }).verifyGate?.status === 'FAIL';
+    return {
+      tool: e.tool || e.toolName || 'exec',
+      ts: e.completedAt || e.ts || Date.now(),
+      params: extractTimelineParams(e),
+      verify: failed ? 'FAIL' : 'PASS',
+      risk: resolveEntryRisk(e),
+    };
+  });
+
+  return {
+    audit: {
+      totalOperations: total,
+      verifyFailures: fails,
+      highRiskOps: highRisk,
+      sessionsTracked: sessions.size || activeDays.size || 1,
+      totalBlocked: fails,
+      passRate,
+    },
+    quality: {
+      overallScore,
+      preExecScore,
+      postExecScore,
+      satisfaction,
+      source: 'audit.jsonl',
+    },
+    meta: {
+      timelineShown: timeline.length,
+      timelineTotal: total,
+      dataSource: 'audit.jsonl',
+    },
+    timeline,
+  };
+}
 
 type ServerConfig = {
   port: number;
   host?: string;
   /** API token for authentication. If set, all requests must include `Authorization: Bearer <token>` */
   apiToken?: string;
+  /** Workspace root for rules config */
+  workspace?: string;
 };
 
 export function createServer(config?: Partial<ServerConfig>) {
   const port = config?.port ?? 3300;
   const host = config?.host ?? '127.0.0.1';
   const apiToken = config?.apiToken;
+  const workspaceRoot = config?.workspace
+    ?? process.env.OPENCLAW_WORKSPACE
+    ?? path.resolve(process.cwd(), '..', '..');
 
   const app = express();
   app.use(cors());
@@ -52,8 +167,8 @@ export function createServer(config?: Partial<ServerConfig>) {
   // ---- API Token Authentication ----
   if (apiToken) {
     app.use((req: Request, res: Response, next: NextFunction) => {
-      // Skip health check and dashboard (static page)
-      if (req.path === '/health' || req.path === '/dashboard' || req.path.startsWith('/dashboard/')) {
+      // Only health check is public
+      if (req.path === '/health') {
         next();
         return;
       }
@@ -73,6 +188,112 @@ export function createServer(config?: Partial<ServerConfig>) {
   // Each request gets its own AgentOS tracker, but we keep one base instance
   // for shared memory (semantic/episodic) and accumulated profile.
   const baseAos = new AgentOS();
+  const dashAPI = new DashboardAPI(baseAos, workspaceRoot);
+  const analyzer = new AuditAnalyzer(workspaceRoot);
+
+  // 启动事故自动扫描
+  analyzer.startAutoScan();
+
+  // ---- Dashboard API Routes ----
+
+  app.get('/api/stats', (_req: Request, res: Response) => {
+    res.json(dashAPI.getStats());
+  });
+
+  app.get('/api/timeline', (_req: Request, res: Response) => {
+    res.json(dashAPI.getTimeline());
+  });
+
+  app.get('/api/hotmap', (_req: Request, res: Response) => {
+    res.json(dashAPI.getHotmap());
+  });
+
+  app.get('/api/audit', (req: Request, res: Response) => {
+    const page = parseInt(String(req.query.page ?? '1'), 10);
+    const pageSize = parseInt(String(req.query.pageSize ?? '20'), 10);
+    res.json(dashAPI.getAuditPage(page, pageSize));
+  });
+
+  app.get('/api/health-runtime', (_req: Request, res: Response) => {
+    res.json(dashAPI.getRuntimeHealth());
+  });
+
+  app.get('/api/debug/audit', (_req: Request, res: Response) => {
+    const auditPath = findAuditFile(process.cwd(), workspaceRoot);
+    const entries = loadAuditEntries(process.cwd(), undefined, workspaceRoot);
+    res.json({
+      auditPath,
+      entryCount: entries.length,
+      workspaceRoot,
+      cwd: process.cwd(),
+      timeline: dashAPI.getTimeline(),
+      hotmapTop: dashAPI.getHotmap().slice(0, 5),
+    });
+  });
+
+  // ---- Incidents API ----
+
+  app.get('/api/incidents', (_req: Request, res: Response) => {
+    analyzer.scan();
+    res.json(analyzer.loadIncidents());
+  });
+
+  app.get('/api/incidents/meta', (_req: Request, res: Response) => {
+    const auditPath = findAuditFile(process.cwd(), workspaceRoot);
+    res.json({
+      auditPath,
+      incidentsDir: path.join(workspaceRoot, '.agentos', 'incidents'),
+      scanIntervalSec: 3,
+      rules: [
+        'config_overwrite — openclaw.json 被清空',
+        'high_risk_exec — 最近 50 条中 ≥3 次高风险 (score>5)',
+        'mass_delete — 最近 30 条中 ≥5 次删除',
+        'schema_violation — 最近 100 条中 ≥3 次 Schema 失败',
+        'guard_blocks — 最近 100 条中 ≥5 次 Guard 拦截',
+      ],
+      total: analyzer.loadIncidents().length,
+      unresolved: analyzer.loadUnresolved().length,
+    });
+  });
+
+  app.get('/api/incidents/unresolved', (_req: Request, res: Response) => {
+    res.json(analyzer.loadUnresolved());
+  });
+
+  app.post('/api/incidents/:id/resolve', (req: Request, res: Response) => {
+    const ok = analyzer.resolveIncident(req.params.id as string);
+    res.json({ ok });
+  });
+
+  app.get('/api/incidents/scan', (_req: Request, res: Response) => {
+    const incidents = analyzer.scan();
+    res.json({ scanned: true, newIncidents: incidents.length });
+  });
+
+  // ---- Rules API ----
+
+  app.get('/api/rules', (_req: Request, res: Response) => {
+    const configPath = require('path').join(workspaceRoot, '.agentos', 'rules.json');
+    const fs2 = require('fs');
+    let config = null;
+    if (fs2.existsSync(configPath)) {
+      try {
+        config = JSON.parse(fs2.readFileSync(configPath, 'utf-8'));
+      } catch { /* ignore */ }
+    }
+    // Always return the builtin keys + user config
+    res.json({ config, path: configPath });
+  });
+
+  app.post('/api/rules/save', (req: Request, res: Response) => {
+    const configPath = require('path').join(workspaceRoot, '.agentos', 'rules.json');
+    const fs2 = require('fs');
+    const body = req.body || {};
+    // Merge: preserve version, _comment if not set
+    if (!body.version) body.version = '1.0';
+    fs2.writeFileSync(configPath, JSON.stringify(body, null, 2), 'utf-8');
+    res.json({ ok: true });
+  });
 
   // ---- Health ----
 
@@ -82,31 +303,38 @@ export function createServer(config?: Partial<ServerConfig>) {
 
   // ---- Dashboard ----
 
-  const dashboardPath = require('path').join(__dirname, 'dashboard.html');
+  const assetsDir = path.join(__dirname, '..', 'assets');
+  app.use('/assets', express.static(assetsDir, { maxAge: '1h' }));
+
+  const dashboardPath = path.join(__dirname, 'dashboard.html');
   let dashboardHtml = '<h1>Dashboard unavailable</h1>';
   try {
     dashboardHtml = require('fs').readFileSync(dashboardPath, 'utf-8');
   } catch {
-    // dashboard.html not in dist — use inline fallback
-    dashboardHtml = `<!DOCTYPE html>
-<html><head><title>Sentinel AgentOS</title><style>body{font-family:system-ui;max-width:800px;margin:2rem auto;padding:1rem;background:#0d1117;color:#c9d1d9}h1{color:#58a6ff}pre{background:#161b22;padding:1rem;border-radius:6px}</style></head>
-<body><h1>Sentinel AgentOS Dashboard</h1><p>Dashboard running. Visit <a href="/pipeline/report">/pipeline/report</a> or <a href="/pipeline/profile">/pipeline/profile</a> for data.</p></body></html>`;
+    dashboardHtml = `<!DOCTYPE html><html><head><title>Sentinel AgentOS</title><meta charset="utf-8"><style>body{font-family:system-ui;background:#0d1117;color:#c9d1d9;display:grid;place-items:center;height:100vh;margin:0}h1{color:#58a6ff}a{color:#58a6ff}</style></head><body><div style="text-align:center"><h1>🛡️ Sentinel AgentOS</h1><p style="color:#8b949e">Dashboard requires authentication token.</p><p>Start server with <code>--token YOUR_TOKEN</code></p></div></body></html>`;
   }
 
+  // Inject auth token into dashboard page for API calls
+  const dashboardHtmlWithToken = dashboardHtml.replace('__TOKEN__', apiToken || '');
+
   app.get('/dashboard', (_req: Request, res: Response) => {
-    res.type('html').send(dashboardHtml);
+    res.set('Cache-Control', 'no-store');
+    res.type('html').send(dashboardHtmlWithToken);
   });
 
-  // Rich report for dashboard
+  // Rich report for dashboard — reads real workspace audit.jsonl
   app.get('/pipeline/report', (_req: Request, res: Response) => {
-    const r = baseAos.getReport();
-    const audit = baseAos.guard.audit.query({ limit: 20 });
+    const entries = loadAuditEntries(process.cwd(), undefined, workspaceRoot);
+    const auditPath = findAuditFile(process.cwd(), workspaceRoot);
+
+    const report = buildAuditReport(entries);
     res.json({
-      ...r,
+      ...report,
+      meta: {
+        ...report.meta,
+        auditPath: auditPath ?? null,
+      },
       uptime: `${Math.floor(process.uptime())}s`,
-      timeline: audit.map(e => ({
-        tool: e.toolName, ts: e.completedAt, verify: e.verifyGate.status, risk: e.riskGate.score,
-      })),
     });
   });
 
@@ -171,12 +399,6 @@ export function createServer(config?: Partial<ServerConfig>) {
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
-  });
-
-  // ---- Pipeline: Report ----
-
-  app.get('/pipeline/report', (_req: Request, res: Response) => {
-    res.json({ report: baseAos.statusReport() });
   });
 
   // ---- Pipeline: Profile ----
@@ -276,11 +498,19 @@ export function createServer(config?: Partial<ServerConfig>) {
   return {
     app,
     start: () => {
-      return new Promise<void>((resolve) => {
+      return new Promise<void>((resolve, reject) => {
         server = app.listen(port, host, () => {
           console.log(`🛡️ Sentinel AgentOS HTTP server → http://${host}:${port}`);
           console.log(`   Health: http://${host}:${port}/health`);
+          console.log(`   Audit:  ${findAuditFile(process.cwd(), workspaceRoot) ?? '(not found)'}`);
           resolve();
+        });
+        server?.on('error', (err: NodeJS.ErrnoException) => {
+          if (err.code === 'EADDRINUSE') {
+            reject(new Error(`Port ${port} is already in use. Stop the old server (Ctrl+C) and run npm start again.`));
+          } else {
+            reject(err);
+          }
         });
       });
     },

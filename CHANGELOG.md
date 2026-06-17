@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.4.0 (2026-06-17)
+
+### 🆕 v1.3 Dashboard + 故障复盘
+
+- **Dashboard Tab 导航** — 📊概览/📈趋势/🔥热力图/🚨事故 四 Tab 切换
+- **统计卡片** — 总操作/通过率/高风险/质量评分/会话数，动画数字过渡
+- **7天趋势图** — 纯 CSS 柱状图展示每日拦截趋势（/api/timeline）
+- **工具热力图** — exec/read/write 调用量条形分布（/api/hotmap）
+- **故障复盘引擎** — 检测 openclaw.json 被覆盖、高风险操作频发、批量删除等异常
+  - 3 秒自动扫描审计日志
+  - 自动生成 Markdown 复盘报告
+  - 事故列表持久化（.agentos/incidents/）
+  - Dashboard 事故 Tab 可标记解决
+- **Dashboard API** — /api/stats, /api/timeline, /api/hotmap, /api/audit, /api/incidents
+- **新增模块** src/dashboard/api.ts, src/audit-analyzer.ts
+- **新增导出** DashboardAPI, AuditAnalyzer
+
+---
+
+## v0.3.13 (2026-06-17)
+
+### 🆕 v1.2 可配置规则
+
+- **自定义规则追加** — 支持 `.agentos/rules.json` 配置 4 类自定义规则
+  - `dangerous` — 追加危险命令黑名单，匹配即拦截
+  - `warning` — 追加警告命令，匹配弹窗确认
+  - `sensitive` — 追加敏感文件 glob 模式，命中 block
+  - `protected` — 追加保护文件 glob 模式，命中弹窗确认
+- **禁用内置规则** — `disabled` 数组可禁用任意内置规则（按 key 匹配）
+- **优先级覆盖** — `overrideSeverity` 支持 warning↔dangerous 升降级
+- **热加载** — `fs.watch` 监听 rules.json，修改后 5 秒内自动生效
+- **格式容错** — rules.json 解析失败时仅 warn，不阻止启动
+- **示例模板** — 插件启动时自动生成 `.agentos/rules.json` 模板文件
+- **新增 `src/rule-loader.ts`** — 规则加载 + 解析 + 热加载引擎
+- **42 条内置规则 key 映射** — 支持按描述名引用禁用/覆盖
+
+---
+
 ## v0.3.11 (2026-06-14)
 
 ### 🐛 修复
