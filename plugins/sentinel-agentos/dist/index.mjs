@@ -1,6 +1,5 @@
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { AgentOS, BehaviorModel, CreditSystem } from "sentinel-agentos";
-import { computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5 } from "sentinel-agentos";
+import { AgentOS, BehaviorModel, CreditSystem, computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5, RuleLoader } from "sentinel-agentos";
 import * as path from "node:path";
 import * as fs from "node:fs";
 let aos = null;
@@ -320,6 +319,23 @@ const plugin = definePluginEntry({
     } catch {
     }
     auditFilePath = rotateAuditLog(auditDir);
+    RuleLoader.generateTemplate(workspaceRoot);
+    const ruleLoader = new RuleLoader(workspaceRoot);
+    let loadedRules = ruleLoader.load();
+    let allDangerousCommands = mergeCommandRules(DANGEROUS_COMMANDS, loadedRules, "dangerous");
+    let allWarningCommands = mergeCommandRules(WARNING_COMMANDS, loadedRules, "warning");
+    let allSensitivePatterns = mergeStringLists(SENSITIVE_PATTERNS, loadedRules.sensitivePatterns, loadedRules.disabledRules);
+    let allProtectedPatterns = mergeStringLists(PROTECTED_PATTERNS, loadedRules.protectedPatterns, loadedRules.disabledRules);
+    log(`rules.json: ${loadedRules.userRuleCount} \u81EA\u5B9A\u4E49\u89C4\u5219 / ${loadedRules.disabledCount} \u7981\u7528 / ${loadedRules.severityOverrides.size} \u4F18\u5148\u7EA7\u8986\u76D6`);
+    ruleLoader.onChange((newRules) => {
+      loadedRules = newRules;
+      allDangerousCommands = mergeCommandRules(DANGEROUS_COMMANDS, loadedRules, "dangerous");
+      allWarningCommands = mergeCommandRules(WARNING_COMMANDS, loadedRules, "warning");
+      allSensitivePatterns = mergeStringLists(SENSITIVE_PATTERNS, loadedRules.sensitivePatterns, loadedRules.disabledRules);
+      allProtectedPatterns = mergeStringLists(PROTECTED_PATTERNS, loadedRules.protectedPatterns, loadedRules.disabledRules);
+      log(`\u70ED\u52A0\u8F7D\u5B8C\u6210: ${loadedRules.userRuleCount} \u81EA\u5B9A\u4E49 / ${loadedRules.disabledCount} \u7981\u7528`);
+    });
+    ruleLoader.startWatch();
     initAgentOSAsync();
     api.on("before_prompt_build", async (event) => {
       try {
@@ -341,7 +357,7 @@ const plugin = definePluginEntry({
       const { confidence, decision, dimensions } = confidenceResult;
       const { d1, d2, d3, d4, d5 } = dimensions;
       recordBehaviorForTool(toolName, params || {}, true, decision !== "block");
-      const confSummary = !lastAIMessage ? "" : `\u{1F4CA} \u7F6E\u4FE1\u5EA6: ${confidence}/100
+      const confSummary = `\u{1F4CA} \u7F6E\u4FE1\u5EA6: ${confidence}/100 (${decision})
   D1(\u547D\u4EE4\u98CE\u9669): ${d1.score}/100
   D2(\u5386\u53F2\u884C\u4E3A): ${d2.score}/100 (${d2.matchLevel})
   D3(\u4E0A\u4E0B\u6587): ${d3.score}/100 (${d3.matched}/${d3.total}\u5173\u952E\u8BCD)
@@ -358,7 +374,7 @@ const plugin = definePluginEntry({
         const cmd = String(params.command);
         const expandedCmd = expandNodeEval(cmd);
         const checkCmd = expandedCmd || cmd;
-        for (const [re, desc] of DANGEROUS_COMMANDS) {
+        for (const [re, desc] of allDangerousCommands) {
           if (re.test(checkCmd)) {
             return {
               requireApproval: {
@@ -375,7 +391,7 @@ Sentinel: ${desc}
             };
           }
         }
-        for (const [re, desc] of WARNING_COMMANDS) {
+        for (const [re, desc] of allWarningCommands) {
           if (re.test(checkCmd)) {
             return {
               requireApproval: {
@@ -394,14 +410,14 @@ Sentinel: ${desc}
         }
       }
       if (p && ["write", "edit", "delete", "read"].includes(toolName)) {
-        for (const ptn of SENSITIVE_PATTERNS) {
+        for (const ptn of allSensitivePatterns) {
           if (globMatch(ptn, String(p))) {
             return { block: true, blockReason: `\u{1F6AB} Sentinel: \u654F\u611F\u6587\u4EF6 \u2014 "${p}" \u5339\u914D "${ptn}"` };
           }
         }
       }
       if (p && ["write", "edit", "delete"].includes(toolName)) {
-        for (const pf of PROTECTED_PATTERNS) {
+        for (const pf of allProtectedPatterns) {
           if (globMatch(pf, String(p))) {
             return {
               requireApproval: {
@@ -549,10 +565,83 @@ ${contextHint}`,
       } catch {
       }
     });
-    log("\u2705 v1.4 \u5DF2\u6CE8\u518C: before_tool_call(\u7F6E\u4FE1\u5EA6/\u884C\u4E3A/\u62E6\u622A) + after_tool_call(\u5BA1\u8BA1) + session_start(\u8BB0\u5FC6)");
-    log(`\u62E6\u622A\u89C4\u5219: \u5371\u9669x${DANGEROUS_COMMANDS.length} | \u8B66\u544Ax${WARNING_COMMANDS.length} | CB\u9608\u503C=${CB_THRESHOLD}`);
+    log(`\u2705 v1.4 \u5DF2\u6CE8\u518C: before_tool_call(\u7F6E\u4FE1\u5EA6/\u884C\u4E3A/\u62E6\u622A) + after_tool_call(\u5BA1\u8BA1) + session_start + \u81EA\u5B9A\u4E49\u89C4\u5219(${loadedRules.userRuleCount})`);
+    log(`\u62E6\u622A\u89C4\u5219: \u5371\u9669x${allDangerousCommands.length} | \u8B66\u544Ax${allWarningCommands.length} | \u654F\u611F\u6587\u4EF6x${allSensitivePatterns.length} | \u4FDD\u62A4\u6587\u4EF6x${allProtectedPatterns.length} | CB\u9608\u503C=${CB_THRESHOLD}`);
   }
 });
+function mergeCommandRules(builtin, loaded, category) {
+  const result = [];
+  const { disabledRules, severityOverrides } = loaded;
+  for (const [re, desc] of builtin) {
+    const key = descToKey(desc);
+    if (disabledRules.has(key)) continue;
+    const override = severityOverrides.get(key);
+    if (override) {
+      if (category === "dangerous" && override === "warning") continue;
+      if (category === "warning" && override === "dangerous") continue;
+    }
+    result.push([re, desc]);
+  }
+  const custom = category === "dangerous" ? loaded.dangerousCommands : loaded.warningCommands;
+  for (const [re, desc] of custom) {
+    result.push([re, desc]);
+  }
+  return result;
+}
+function mergeStringLists(builtin, custom, disabledRules) {
+  const result = [];
+  for (const item of builtin) {
+    if (!disabledRules.has(item)) {
+      result.push(item);
+    }
+  }
+  for (const item of custom) {
+    result.push(item);
+  }
+  return result;
+}
+function descToKey(desc) {
+  const KEY_MAP = {
+    "rm -rf / \u2014 \u5220\u9664\u6574\u4E2A\u7CFB\u7EDF": "rm-rf-root",
+    "sudo rm \u2014 \u63D0\u6743\u5220\u9664": "sudo-rm",
+    "chmod 777 \u2014 \u5F00\u653E\u6240\u6709\u6743\u9650": "chmod-777",
+    "Fork Bomb \u2014 \u8017\u5C3D\u7CFB\u7EDF\u8D44\u6E90": "fork-bomb",
+    "\u8986\u76D6\u78C1\u76D8\u8BBE\u5907 \u2014 \u7834\u574F\u5206\u533A\u8868": "dd-overwrite",
+    "del /f /s \u2014 \u5F3A\u5236\u9012\u5F52\u5220\u9664": "del-f-s",
+    "rd /s /q C:\\ \u2014 \u9012\u5F52\u5220\u9664\u76D8\u7B26": "rd-s-q",
+    "Remove-Item -Recurse -Force \u2014 PowerShell \u9012\u5F52\u5220\u9664": "remove-item-recurse",
+    "format \u2014 \u683C\u5F0F\u5316\u78C1\u76D8": "format-disk",
+    "cipher /w \u2014 \u5B89\u5168\u64E6\u9664\u78C1\u76D8\u7A7A\u95F4": "cipher-w",
+    "docker run -v /:/host \u2014 \u6302\u8F7D\u5BBF\u4E3B\u673A\u6839\u76EE\u5F55": "docker-mount-host",
+    "docker run --privileged \u2014 \u7279\u6743\u5BB9\u5668": "docker-privileged",
+    "docker exec -it \u2014 \u8FDB\u5165\u8FD0\u884C\u4E2D\u5BB9\u5668": "docker-exec",
+    "DROP DATABASE \u2014 \u5220\u9664\u6570\u636E\u5E93": "drop-database",
+    "DROP TABLE \u2014 \u5220\u9664\u8868": "drop-table",
+    "TRUNCATE \u2014 \u6E05\u7A7A\u8868\u6570\u636E": "truncate",
+    "nc -e \u2014 \u53CD\u5411 Shell": "nc-reverse-shell",
+    "PowerShell \u4E0B\u8F7D\u6587\u4EF6\u5230\u672C\u5730": "powershell-download",
+    "base64 \u89E3\u7801\u7BA1\u9053 \u2014 \u7F16\u7801\u9003\u9038": "base64-decode",
+    "base64 \u5185\u8054\u89E3\u7801 \u2014 \u7F16\u7801\u9003\u9038": "base64-inline",
+    "\u7BA1\u9053\u5230 sh \u2014 \u6267\u884C\u672A\u77E5\u811A\u672C": "pipe-sh",
+    "\u7BA1\u9053\u5230 bash \u2014 \u6267\u884C\u672A\u77E5\u811A\u672C": "pipe-bash",
+    "curl | sh \u2014 \u6267\u884C\u8FDC\u7A0B\u811A\u672C": "curl-pipe-sh",
+    "wget \u7BA1\u9053 \u2014 \u6267\u884C\u8FDC\u7A0B\u811A\u672C": "wget-pipe",
+    "git push --force \u2014 \u5F3A\u5236\u63A8\u9001": "git-push-force",
+    "git push -f \u2014 \u5F3A\u5236\u63A8\u9001": "git-push-f",
+    "git reset --hard \u2014 \u786C\u91CD\u7F6E": "git-reset-hard",
+    "git commit --amend \u2014 \u4FEE\u6539\u63D0\u4EA4\u5386\u53F2": "git-commit-amend",
+    "npm publish \u2014 \u53D1\u5E03\u5230 npm \u4ED3\u5E93": "npm-publish",
+    "npm unpublish \u2014 \u4E0B\u67B6\u5305": "npm-unpublish",
+    "pip install \u2014 \u5B89\u88C5 Python \u5305": "pip-install",
+    "gem install \u2014 \u5B89\u88C5 Ruby \u5305": "gem-install",
+    "cargo install \u2014 \u5B89\u88C5 Rust \u5305": "cargo-install",
+    "go install \u2014 \u5B89\u88C5 Go \u5305": "go-install",
+    "docker rm \u2014 \u5220\u9664\u5BB9\u5668": "docker-rm",
+    "docker system prune \u2014 \u6E05\u7406 Docker": "docker-prune"
+  };
+  if (KEY_MAP[desc]) return KEY_MAP[desc];
+  return desc.split(" \u2014 ")[0].toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
+}
 var index_default = plugin;
 export {
   index_default as default

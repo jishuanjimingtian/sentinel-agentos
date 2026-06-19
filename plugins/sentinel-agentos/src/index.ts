@@ -8,9 +8,8 @@
  */
 
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { AgentOS, BehaviorModel, CreditSystem } from "sentinel-agentos";
-import { computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5 } from "sentinel-agentos";
-import type { ConfidenceResult } from "sentinel-agentos";
+import { AgentOS, BehaviorModel, CreditSystem, computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5, RuleLoader } from "sentinel-agentos";
+import type { ConfidenceResult, LoadedRules } from "sentinel-agentos";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
@@ -394,6 +393,38 @@ const plugin = definePluginEntry({
     const auditDir = path.join(workspaceRoot, ".agentos");
     try { fs.mkdirSync(auditDir, { recursive: true }); } catch { /* ok */ }
     auditFilePath = rotateAuditLog(auditDir);
+
+    // ══════════════════════════════════
+    // v1.2: 用户自定义规则加载 + 热加载
+    // ══════════════════════════════════
+
+    // 生成示例 rules.json（如不存在）
+    RuleLoader.generateTemplate(workspaceRoot);
+
+    // 启动 RuleLoader
+    const ruleLoader = new RuleLoader(workspaceRoot);
+    let loadedRules: LoadedRules = ruleLoader.load();
+
+    // 动态规则数组（通过闭包引用，热加载后更新）
+    let allDangerousCommands = mergeCommandRules(DANGEROUS_COMMANDS, loadedRules, 'dangerous');
+    let allWarningCommands = mergeCommandRules(WARNING_COMMANDS, loadedRules, 'warning');
+    let allSensitivePatterns = mergeStringLists(SENSITIVE_PATTERNS, loadedRules.sensitivePatterns, loadedRules.disabledRules);
+    let allProtectedPatterns = mergeStringLists(PROTECTED_PATTERNS, loadedRules.protectedPatterns, loadedRules.disabledRules);
+
+    log(`rules.json: ${loadedRules.userRuleCount} 自定义规则 / ${loadedRules.disabledCount} 禁用 / ${loadedRules.severityOverrides.size} 优先级覆盖`);
+
+    // 热加载监听
+    ruleLoader.onChange((newRules: LoadedRules) => {
+      loadedRules = newRules;
+      allDangerousCommands = mergeCommandRules(DANGEROUS_COMMANDS, loadedRules, 'dangerous');
+      allWarningCommands = mergeCommandRules(WARNING_COMMANDS, loadedRules, 'warning');
+      allSensitivePatterns = mergeStringLists(SENSITIVE_PATTERNS, loadedRules.sensitivePatterns, loadedRules.disabledRules);
+      allProtectedPatterns = mergeStringLists(PROTECTED_PATTERNS, loadedRules.protectedPatterns, loadedRules.disabledRules);
+      log(`热加载完成: ${loadedRules.userRuleCount} 自定义 / ${loadedRules.disabledCount} 禁用`);
+    });
+    ruleLoader.startWatch();
+
+    // 异步初始化 AgentOS（不阻塞 gateway 启动）
     initAgentOSAsync();
 
     // ══════════════════════════════════
@@ -427,9 +458,9 @@ const plugin = definePluginEntry({
       // 记录行为
       recordBehaviorForTool(toolName, params || {}, true, decision !== "block");
 
-      // 置信度摘要
-      const confSummary = !lastAIMessage ? "" :
-        `📊 置信度: ${confidence}/100\n` +
+      // 置信度摘要（始终显示，即使没有 AI 消息）
+      const confSummary =
+        `📊 置信度: ${confidence}/100 (${decision})\n` +
         `  D1(命令风险): ${d1.score}/100\n` +
         `  D2(历史行为): ${d2.score}/100 (${d2.matchLevel})\n` +
         `  D3(上下文): ${d3.score}/100 (${d3.matched}/${d3.total}关键词)\n` +
@@ -453,7 +484,7 @@ const plugin = definePluginEntry({
         const cmd = String((params as Record<string, unknown>).command);
         const expandedCmd = expandNodeEval(cmd);
         const checkCmd = expandedCmd || cmd;
-        for (const [re, desc] of DANGEROUS_COMMANDS) {
+        for (const [re, desc] of allDangerousCommands) {
           if (re.test(checkCmd)) {
             return {
               requireApproval: {
@@ -466,7 +497,7 @@ const plugin = definePluginEntry({
             };
           }
         }
-        for (const [re, desc] of WARNING_COMMANDS) {
+        for (const [re, desc] of allWarningCommands) {
           if (re.test(checkCmd)) {
             return {
               requireApproval: {
@@ -483,7 +514,7 @@ const plugin = definePluginEntry({
 
       // ── 敏感文件拦截 ──
       if (p && ["write", "edit", "delete", "read"].includes(toolName)) {
-        for (const ptn of SENSITIVE_PATTERNS) {
+        for (const ptn of allSensitivePatterns) {
           if (globMatch(ptn, String(p))) {
             return { block: true, blockReason: `🚫 Sentinel: 敏感文件 — "${p}" 匹配 "${ptn}"` };
           }
@@ -492,7 +523,7 @@ const plugin = definePluginEntry({
 
       // ── 保护文件确认 ──
       if (p && ["write", "edit", "delete"].includes(toolName)) {
-        for (const pf of PROTECTED_PATTERNS) {
+        for (const pf of allProtectedPatterns) {
           if (globMatch(pf, String(p))) {
             return {
               requireApproval: {
@@ -659,9 +690,134 @@ const plugin = definePluginEntry({
       } catch { /* non-critical */ }
     });
 
-    log("✅ v1.4 已注册: before_tool_call(置信度/行为/拦截) + after_tool_call(审计) + session_start(记忆)");
-    log(`拦截规则: 危险x${DANGEROUS_COMMANDS.length} | 警告x${WARNING_COMMANDS.length} | CB阈值=${CB_THRESHOLD}`);
+    log(`✅ v1.4 已注册: before_tool_call(置信度/行为/拦截) + after_tool_call(审计) + session_start + 自定义规则(${loadedRules.userRuleCount})`);
+    log(`拦截规则: 危险x${allDangerousCommands.length} | 警告x${allWarningCommands.length} | 敏感文件x${allSensitivePatterns.length} | 保护文件x${allProtectedPatterns.length} | CB阈值=${CB_THRESHOLD}`);
   },
 });
+
+// ═══════════════════════════════════════
+// v1.2: 规则合并工具
+// ═══════════════════════════════════════
+
+/**
+ * 合并内置命令规则 + 用户自定义规则。
+ * - 支持 disabled 列表过滤内置规则
+ * - 支持 overrideSeverity 升降级
+ * - 自定义规则追加到末尾
+ */
+function mergeCommandRules(
+  builtin: Array<[RegExp, string]>,
+  loaded: LoadedRules,
+  category: 'dangerous' | 'warning',
+): Array<[RegExp, string]> {
+  const result: Array<[RegExp, string]> = [];
+  const { disabledRules, severityOverrides } = loaded;
+
+  // 1. 内置规则：按 disabled/override 过滤
+  for (const [re, desc] of builtin) {
+    // 生成 key（从描述中提取或使用正则字符串）
+    const key = descToKey(desc);
+
+    // 禁用检查
+    if (disabledRules.has(key)) continue;
+
+    // 优先级覆盖检查
+    const override = severityOverrides.get(key);
+    if (override) {
+      if (category === 'dangerous' && override === 'warning') continue;  // 降级：不放入 dangerous
+      if (category === 'warning' && override === 'dangerous') continue;  // 升级：不放入 warning
+    }
+
+    result.push([re, desc]);
+  }
+
+  // 2. 用户自定义规则（已在 RuleLoader 中处理好 disabled/override）
+  const custom = category === 'dangerous' ? loaded.dangerousCommands : loaded.warningCommands;
+  for (const [re, desc] of custom) {
+    result.push([re, desc]);
+  }
+
+  return result;
+}
+
+/**
+ * 合并内置字符串列表 + 用户自定义列表。
+ * 禁用的 pattern 会被过滤掉。
+ */
+function mergeStringLists(
+  builtin: string[],
+  custom: string[],
+  disabledRules: Set<string>,
+): string[] {
+  const result: string[] = [];
+
+  for (const item of builtin) {
+    if (!disabledRules.has(item)) {
+      result.push(item);
+    }
+  }
+
+  for (const item of custom) {
+    result.push(item);
+  }
+
+  return result;
+}
+
+/**
+ * 从描述文本中提取规则 key。
+ * 尝试从内置规则描述中提取可引用的 key。
+ */
+function descToKey(desc: string): string {
+  // 常见 key 映射
+  const KEY_MAP: Record<string, string> = {
+    'rm -rf / — 删除整个系统': 'rm-rf-root',
+    'sudo rm — 提权删除': 'sudo-rm',
+    'chmod 777 — 开放所有权限': 'chmod-777',
+    'Fork Bomb — 耗尽系统资源': 'fork-bomb',
+    '覆盖磁盘设备 — 破坏分区表': 'dd-overwrite',
+    'del /f /s — 强制递归删除': 'del-f-s',
+    'rd /s /q C:\\ — 递归删除盘符': 'rd-s-q',
+    'Remove-Item -Recurse -Force — PowerShell 递归删除': 'remove-item-recurse',
+    'format — 格式化磁盘': 'format-disk',
+    'cipher /w — 安全擦除磁盘空间': 'cipher-w',
+    'docker run -v /:/host — 挂载宿主机根目录': 'docker-mount-host',
+    'docker run --privileged — 特权容器': 'docker-privileged',
+    'docker exec -it — 进入运行中容器': 'docker-exec',
+    'DROP DATABASE — 删除数据库': 'drop-database',
+    'DROP TABLE — 删除表': 'drop-table',
+    'TRUNCATE — 清空表数据': 'truncate',
+    'nc -e — 反向 Shell': 'nc-reverse-shell',
+    'PowerShell 下载文件到本地': 'powershell-download',
+    'base64 解码管道 — 编码逃逸': 'base64-decode',
+    'base64 内联解码 — 编码逃逸': 'base64-inline',
+    '管道到 sh — 执行未知脚本': 'pipe-sh',
+    '管道到 bash — 执行未知脚本': 'pipe-bash',
+    'curl | sh — 执行远程脚本': 'curl-pipe-sh',
+    'wget 管道 — 执行远程脚本': 'wget-pipe',
+    'git push --force — 强制推送': 'git-push-force',
+    'git push -f — 强制推送': 'git-push-f',
+    'git reset --hard — 硬重置': 'git-reset-hard',
+    'git commit --amend — 修改提交历史': 'git-commit-amend',
+    'npm publish — 发布到 npm 仓库': 'npm-publish',
+    'npm unpublish — 下架包': 'npm-unpublish',
+    'pip install — 安装 Python 包': 'pip-install',
+    'gem install — 安装 Ruby 包': 'gem-install',
+    'cargo install — 安装 Rust 包': 'cargo-install',
+    'go install — 安装 Go 包': 'go-install',
+    'docker rm — 删除容器': 'docker-rm',
+    'docker system prune — 清理 Docker': 'docker-prune',
+  };
+
+  if (KEY_MAP[desc]) return KEY_MAP[desc];
+
+  // 回退：用描述的前几个词生成 key
+  return desc
+    .split(' — ')[0]
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40);
+}
 
 export default plugin;

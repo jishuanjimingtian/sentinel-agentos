@@ -4706,5 +4706,32 @@
       "session-end"
     ],
     "relatedEntities": []
+  },
+  {
+    "id": "ep_1781841309339_a5ccf60c",
+    "timestamp": 1781841309339,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 41 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781841309349_266d8296",
+    "timestamp": 1781841309349,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
   }
 ]
