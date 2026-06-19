@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Sentinel AgentOS — AI Agent 操作系统</title>
-<meta name="description" content="确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进。">
+<meta name="description" content="v0.4.1 — 确定性 Guard 六重门 + D1-D5 智能审批 + 分层记忆 + Dashboard 可观测，让任何 Agent 可靠、可审计、可改进。">
 <meta name="keywords" content="AgentOS,AI Agent,Agent 操作系统,Guard,Memory,Evaluator,Agent 安全,Agent 审计,AI 治理">
 <meta name="author" content="Sentinel AgentOS">
 <meta name="robots" content="index, follow">
 <meta property="og:title" content="Sentinel AgentOS — AI Agent 操作系统">
-<meta property="og:description" content="确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进。">
+<meta property="og:description" content="v0.4.1 — Guard 六重门 + D1-D5 智能审批 + Dashboard，让 Agent 可靠、可审计、可改进。">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://www.sentinelagentos.com">
 <meta property="og:image" content="https://www.sentinelagentos.com/og-image.png">
@@ -19,13 +19,13 @@
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
   "name": "Sentinel AgentOS",
-  "description": "AI Agent 操作系统 — 确定性 Guard 层 + 分层记忆 + 自动评估",
+  "description": "AI Agent 操作系统 v0.4.1 — Guard 六重门 + D1-D5 智能审批 + Dashboard",
   "applicationCategory": "DeveloperApplication",
   "operatingSystem": "Linux, macOS, Windows",
   "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
 }
 </script>
-<link rel="icon" href="logo-icon.svg" type="image/svg+xml">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='b' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%230F172A'/%3E%3Cstop offset='100%25' stop-color='%23020617'/%3E%3C/linearGradient%3E%3ClinearGradient id='s' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%2322D3EE'/%3E%3Cstop offset='50%25' stop-color='%233B82F6'/%3E%3Cstop offset='100%25' stop-color='%238B5CF6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='20' y='20' width='472' height='472' rx='96' fill='url(%23b)' stroke='%231E293B' stroke-width='4'/%3E%3Cpath d='M256 60 L410 138 L410 260 Q410 358 256 440 Q102 358 102 260 L102 138 Z' fill='%233B82F6' fill-opacity='.15' stroke='%231E293B' stroke-width='2'/%3E%3Ctext x='256' y='210' text-anchor='middle' font-family='sans-serif' font-size='72' font-weight='700' letter-spacing='6' fill='%23F1F5F9'%3ESENTINEL%3C/text%3E%3Ctext x='256' y='290' text-anchor='middle' font-family='sans-serif' font-size='52' font-weight='300' letter-spacing='12' fill='url(%23s)'%3EAGENTOS%3C/text%3E%3C/svg%3E" type="image/svg+xml">
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
@@ -715,17 +715,17 @@
     display: flex; align-items: center; gap: 12px;
     text-decoration: none; color: inherit;
   }
-  .brand-lockup img {
-    height: 42px; width: auto; flex-shrink: 0;
+  .brand-lockup .brand-mark {
+    height: 42px; width: 42px; flex-shrink: 0;
     border-radius: 11px; display: block;
     filter: drop-shadow(0 4px 14px rgba(34,211,238,.22));
     transition: filter .25s, transform .25s;
   }
-  .brand-lockup:hover img {
+  .brand-lockup:hover .brand-mark {
     filter: drop-shadow(0 6px 20px rgba(59,130,246,.35));
     transform: scale(1.02);
   }
-  nav .brand-lockup img { height: 46px; }
+  nav .brand-lockup .brand-mark { height: 46px; width: 46px; }
   nav .brand-top { font-size: 16px; letter-spacing: 3.5px; }
   nav .brand-bottom { font-size: 12px; letter-spacing: 4.5px; }
 
@@ -1272,7 +1272,7 @@
   footer .foot-brand { margin-bottom: 14px; justify-content: center; }
   footer .foot-brand .brand-top { font-size: 16px; }
   footer .foot-brand .brand-bottom { font-size: 12px; }
-  footer .foot-brand img { height: 48px; }
+  footer .foot-brand .brand-mark { height: 48px; width: 48px; }
 
   /* ── Demo / 亮点 ── */
   .demo-band {
@@ -1365,6 +1365,71 @@
   .verify-result strong { color: #fff; }
 
   .pain-wide { grid-column: 1 / -1; }
+
+  /* ── Smart Approval + Dashboard ── */
+  .demo-grid-extended { margin-top: 28px; }
+  .conf-panel {
+    padding: 32px; border-radius: 24px; height: 100%;
+    background: linear-gradient(145deg, rgba(168,85,247,.06), rgba(10,16,32,.82) 45%, rgba(45,212,191,.04));
+    border: 1px solid rgba(168,85,247,.2);
+    position: relative; overflow: hidden;
+  }
+  .conf-panel h3 { font-size: 22px; font-weight: 900; margin-bottom: 6px; }
+  .conf-panel .sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; font-weight: 600; }
+  .conf-score {
+    text-align: center; padding: 18px 0 14px; margin-bottom: 16px;
+    border-radius: 16px; background: rgba(0,0,0,.35); border: 1px solid rgba(239,68,68,.25);
+  }
+  .conf-score .num {
+    font-family: var(--mono); font-size: 48px; font-weight: 900; line-height: 1;
+    color: var(--red); text-shadow: 0 0 24px rgba(248,113,113,.35);
+  }
+  .conf-score .lbl { font-size: 12px; color: var(--muted); margin-top: 6px; font-weight: 600; }
+  .conf-rows { display: flex; flex-direction: column; gap: 8px; }
+  .conf-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 14px; border-radius: 10px;
+    background: rgba(0,0,0,.28); border: 1px solid rgba(255,255,255,.05);
+    font-size: 14px; font-weight: 600;
+  }
+  .conf-row .dim { color: var(--muted); font-size: 13px; }
+  .conf-row .val { font-family: var(--mono); font-weight: 800; min-width: 28px; text-align: right; }
+  .conf-row .val.low { color: var(--red); }
+  .conf-row .val.mid { color: #fbbf24; }
+  .conf-row .val.high { color: var(--green); }
+  .conf-foot {
+    margin-top: 14px; padding: 12px 14px; border-radius: 12px;
+    font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--red);
+    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.22);
+  }
+  .dash-panel { padding: 32px; border-radius: 24px; height: 100%; }
+  .dash-panel h3 { font-size: 22px; font-weight: 900; margin-bottom: 6px; }
+  .dash-panel .sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; font-weight: 600; }
+  .dash-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .dash-stat {
+    padding: 16px 14px; border-radius: 14px; text-align: center;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.06);
+  }
+  .dash-stat .n {
+    font-family: var(--mono); font-size: 26px; font-weight: 900; line-height: 1; margin-bottom: 4px;
+  }
+  .dash-stat:nth-child(1) .n { color: var(--cyan); }
+  .dash-stat:nth-child(2) .n { color: var(--blue); }
+  .dash-stat:nth-child(3) .n { color: var(--purple); }
+  .dash-stat:nth-child(4) .n { color: var(--green); }
+  .dash-stat .l { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .dash-bars { display: flex; flex-direction: column; gap: 10px; }
+  .dash-bar { display: grid; grid-template-columns: 52px 1fr 36px; gap: 10px; align-items: center; }
+  .dash-bar .lbl { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: right; }
+  .dash-bar .track { height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .dash-bar .fill { height: 100%; border-radius: 4px; background: var(--grad); }
+  .dash-bar .pct { font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: right; }
+  .dash-cmd {
+    margin-top: 16px; padding: 12px 14px; border-radius: 12px;
+    font-family: var(--mono); font-size: 11px; color: #94a3b8;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(45,212,191,.15);
+  }
+  .dash-cmd em { color: var(--cyan); font-style: normal; }
 
   /* ── Philosophy ── */
   .philosophy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
@@ -1462,7 +1527,7 @@
     .hero-btns { justify-content: center; }
     .hero-scroll { display: none; }
     .hero-visual { order: -1; min-height: 360px; }
-    .hero-logo { width: 200px; }
+    .hero-logo { width: 200px; height: 200px; }
     .hero-proof { max-width: 100%; }
     .stack-layer { display: none; }
     .pipeline { grid-template-columns: 1fr; }
@@ -1496,6 +1561,36 @@
 </style>
 </head>
 <body>
+
+<svg aria-hidden="true" focusable="false" style="position:absolute;width:0;height:0;overflow:hidden">
+  <symbol id="sentinel-logo" viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="sl-bg" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#0F172A"/>
+        <stop offset="100%" stop-color="#020617"/>
+      </linearGradient>
+      <linearGradient id="sl-sGrad" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0%" stop-color="#22D3EE"/>
+        <stop offset="50%" stop-color="#3B82F6"/>
+        <stop offset="100%" stop-color="#8B5CF6"/>
+      </linearGradient>
+      <linearGradient id="sl-shieldGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#22D3EE" stop-opacity="0.3"/>
+        <stop offset="100%" stop-color="#3B82F6" stop-opacity="0.1"/>
+      </linearGradient>
+    </defs>
+    <rect x="20" y="20" width="472" height="472" rx="96" fill="url(#sl-bg)" stroke="#1E293B" stroke-width="4"/>
+    <path d="M256 60 L410 138 L410 260 Q410 358 256 440 Q102 358 102 260 L102 138 Z" fill="url(#sl-shieldGrad)" stroke="#1E293B" stroke-width="2"/>
+    <text x="256" y="210" text-anchor="middle" font-family="'Outfit','SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="72" font-weight="700" letter-spacing="6" fill="#F1F5F9">SENTINEL</text>
+    <text x="256" y="290" text-anchor="middle" font-family="'Outfit','SF Pro Display','Helvetica Neue',Arial,sans-serif" font-size="52" font-weight="300" letter-spacing="12" fill="url(#sl-sGrad)">AGENTOS</text>
+    <circle cx="180" cy="370" r="6" fill="#22D3EE"/>
+    <circle cx="256" cy="370" r="6" fill="#3B82F6"/>
+    <circle cx="332" cy="370" r="6" fill="#8B5CF6"/>
+    <text x="180" y="396" text-anchor="middle" font-family="'Outfit','SF Pro Text','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="3" fill="#64748B">GUARD</text>
+    <text x="256" y="396" text-anchor="middle" font-family="'Outfit','SF Pro Text','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="3" fill="#64748B">MEMORY</text>
+    <text x="332" y="396" text-anchor="middle" font-family="'Outfit','SF Pro Text','Helvetica Neue',Arial,sans-serif" font-size="14" font-weight="400" letter-spacing="3" fill="#64748B">EVAL</text>
+  </symbol>
+</svg>
 
 <div class="bg-aurora"></div>
 <canvas class="bg-canvas" id="bgCanvas" aria-hidden="true"></canvas>
@@ -1582,9 +1677,9 @@
         </div>
       </div>
       <div class="rail-stat-mini">
-        <div class="rs-item"><div class="rs-n">99</div><div class="rs-l">Tests</div></div>
-        <div class="rs-item"><div class="rs-n">12</div><div class="rs-l">Schemas</div></div>
-        <div class="rs-item"><div class="rs-n">12</div><div class="rs-l">Signals</div></div>
+        <div class="rs-item"><div class="rs-n">405</div><div class="rs-l">Tests</div></div>
+        <div class="rs-item"><div class="rs-n">42</div><div class="rs-l">Rules</div></div>
+        <div class="rs-item"><div class="rs-n">5</div><div class="rs-l">D1-D5</div></div>
         <div class="rs-item"><div class="rs-n">0</div><div class="rs-l">LLM</div></div>
       </div>
     </div>
@@ -1634,6 +1729,8 @@
           <div class="tel-path"><em>api</em> localhost:3300/health</div>
           <div class="tel-path"><em>pipe</em> /pipeline/pre · /feedback</div>
           <div class="tel-path"><em>sandbox</em> direct · sandbox · dry-run</div>
+          <div class="tel-path"><em>dash</em> localhost:3300/dashboard</div>
+          <div class="tel-path"><em>rules</em> .agentos/rules.json</div>
         </div>
       </div>
     </div>
@@ -1653,7 +1750,7 @@
 <nav id="nav">
   <div class="nav-inner">
     <a href="#" class="nav-logo brand-lockup">
-      <img src="logo.svg" alt="">
+      <svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><use href="#sentinel-logo"/></svg>
       <span class="brand-text">
         <span class="brand-top">Sentinel</span>
         <span class="brand-bottom">AgentOS</span>
@@ -1663,6 +1760,8 @@
     <ul class="nav-links" id="navLinks">
       <li><a href="#why">为什么</a></li>
       <li><a href="#demo">亮点</a></li>
+      <li><a href="#approval">审批</a></li>
+      <li><a href="#dashboard">Dashboard</a></li>
       <li><a href="#guard">Guard</a></li>
       <li><a href="#memory">Memory</a></li>
       <li><a href="#eval">Evaluator</a></li>
@@ -1682,14 +1781,14 @@
 <section class="hero">
   <div class="container hero-inner">
     <div class="hero-text reveal">
-      <p class="hero-kicker">Deterministic · Auditable · Evolvable</p>
+      <p class="hero-kicker">v0.4.1 · Deterministic · Auditable · Evolvable</p>
       <h1>
         <span class="line subtle">AI Agent 的</span>
         <span class="line grad">操作系统</span>
       </h1>
       <p class="hero-desc">
         Prompt 说<em>「别删文件」</em>是愿望，不是物理定律。<br>
-        Sentinel 用确定性代码守住每一刀 — Guard 六重门 · 人脑记忆 · 隐性反馈。
+        Sentinel 用确定性代码守住每一刀 — 6 Gate · D1-D5 智能审批 · 三层记忆 · Dashboard 可观测。
       </p>
       <div class="hero-btns">
         <a href="#install" class="btn btn-primary">立即接入</a>
@@ -1697,8 +1796,8 @@
       </div>
       <div class="hero-proof reveal">
         <span class="hero-chip">校验 &lt;1ms</span>
-        <span class="hero-chip">99 tests pass</span>
-        <span class="hero-chip">MIT License</span>
+        <span class="hero-chip">405 tests pass</span>
+        <span class="hero-chip">D1-D5 审批</span>
         <span class="hero-chip">Node ≥18</span>
       </div>
     </div>
@@ -1708,7 +1807,7 @@
         <div class="hero-orbit o2"></div>
         <div class="hero-logo-glow"></div>
         <div class="hero-logo-card glass">
-          <img class="hero-logo" src="logo.svg" alt="Sentinel AgentOS">
+          <svg class="hero-logo brand-mark" viewBox="0 0 512 512" role="img" aria-label="Sentinel AgentOS"><use href="#sentinel-logo"/></svg>
         </div>
       </div>
     </div>
@@ -1782,6 +1881,107 @@
   </div>
 </section>
 
+<!-- 智能审批 -->
+<section id="approval" class="sec-band">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Smart Approval v1.4</div>
+      <h2 class="sec-title">D1-D5 智能审批 · <span class="hl">从行为学习</span></h2>
+      <p class="sec-sub">OpenClaw Plugin 集成五维置信度 + BehaviorModel 行为追踪 + CreditSystem 信用等级 — 越用越懂你的 Agent。</p>
+    </div>
+    <div class="demo-grid" style="margin-bottom:28px">
+      <div class="conf-panel glass reveal">
+        <h3>置信度拦截示例</h3>
+        <p class="sub">npm publish 综合 38 分 — 不靠 Prompt 猜意图，纯确定性加权决策。</p>
+        <div class="conf-score">
+          <div class="num">38</div>
+          <div class="lbl">综合置信度 / 100</div>
+        </div>
+        <div class="conf-rows">
+          <div class="conf-row"><span class="dim">D1 命令风险</span><span class="val low">5</span></div>
+          <div class="conf-row"><span class="dim">D2 历史行为</span><span class="val mid">60</span></div>
+          <div class="conf-row"><span class="dim">D3 上下文匹配</span><span class="val low">30</span></div>
+          <div class="conf-row"><span class="dim">D4 路径敏感度</span><span class="val high">100</span></div>
+          <div class="conf-row"><span class="dim">D5 时间模式</span><span class="val high">100</span></div>
+        </div>
+        <div class="conf-foot">BLOCKED · 权重 D1(35) D2(25) D3(20) D4(10) D5(10)</div>
+      </div>
+      <div class="risk-panel glass reveal">
+        <h3>五维各自负责什么</h3>
+        <p class="sub">每一维独立计算、加权汇总 — 可解释、可审计、零 LLM。</p>
+        <div class="risk-cards">
+          <div class="risk-item safe"><span class="tool">D1 · 命令风险</span><span class="score">35%</span><span class="action">RiskGate</span></div>
+          <div class="risk-item mid"><span class="tool">D2 · 历史行为</span><span class="score">25%</span><span class="action">Behavior</span></div>
+          <div class="risk-item warn"><span class="tool">D3 · 上下文</span><span class="score">20%</span><span class="action">Keywords</span></div>
+          <div class="risk-item danger"><span class="tool">D4-D5 · 路径/时间</span><span class="score">20%</span><span class="action">Pattern</span></div>
+        </div>
+        <div class="risk-formula" style="margin-bottom:0">Credit L1-L3 动态调整阈值 · Circuit Breaker 连续异常自动熔断</div>
+      </div>
+    </div>
+    <div class="philosophy-grid">
+      <div class="phil-card glass reveal">
+        <div class="icon">📐</div>
+        <h3>D1 命令风险</h3>
+        <p>RiskGate 四维公式映射 0-100 — rm -rf / 直接低分，read 文件接近满分。</p>
+      </div>
+      <div class="phil-card glass reveal">
+        <div class="icon">🧭</div>
+        <h3>D2 历史行为</h3>
+        <p>三阶匹配：完全匹配 → 同工具 → 同类别。你常做的操作，置信度自动升高。</p>
+      </div>
+      <div class="phil-card glass reveal">
+        <div class="icon">🔗</div>
+        <h3>D3-D5 上下文</h3>
+        <p>AI 消息关键词、路径敏感度、时间/频率异常 — 综合加权，低分弹窗确认。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Dashboard -->
+<section id="dashboard">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Dashboard v0.4</div>
+      <h2 class="sec-title">可观测 · 可复盘 · <span class="hl">可改进</span></h2>
+      <p class="sec-sub">读真实 audit.jsonl — 概览/趋势/热力图/事故四 Tab，3 秒自动扫描 openclaw.json 覆盖、批量删除等异常。</p>
+    </div>
+    <div class="demo-grid">
+      <div class="dash-panel glass reveal">
+        <h3>系统健康面板</h3>
+        <p class="sub">动画数字过渡 · 7 日 CSS 柱状图 · exec/read/write 工具热力图。</p>
+        <div class="dash-stats">
+          <div class="dash-stat"><div class="n">96.3%</div><div class="l">操作通过率</div></div>
+          <div class="dash-stat"><div class="n">12</div><div class="l">L3 高信用 Agent</div></div>
+          <div class="dash-stat"><div class="n">42</div><div class="l">内置规则</div></div>
+          <div class="dash-stat"><div class="n">3</div><div class="l">熔断保护</div></div>
+        </div>
+        <div class="dash-bars">
+          <div class="dash-bar"><span class="lbl">Schema</span><div class="track"><div class="fill" style="width:95%"></div></div><span class="pct">95</span></div>
+          <div class="dash-bar"><span class="lbl">Risk</span><div class="track"><div class="fill" style="width:78%"></div></div><span class="pct">78</span></div>
+          <div class="dash-bar"><span class="lbl">Memory</span><div class="track"><div class="fill" style="width:62%"></div></div><span class="pct">62</span></div>
+          <div class="dash-bar"><span class="lbl">Eval</span><div class="track"><div class="fill" style="width:88%"></div></div><span class="pct">88</span></div>
+        </div>
+      </div>
+      <div class="verify-panel reveal">
+        <h3>故障复盘引擎</h3>
+        <p class="sub">自动生成 Markdown 复盘报告 · 事故列表持久化到 .agentos/incidents/ · Dashboard 可标记解决。</p>
+        <div class="verify-vs">
+          <div class="verify-box agent">
+            <div class="lbl">🚨 检测到</div>
+            openclaw.json 被覆盖 · 高风险操作频发 · 批量 delete_dir
+          </div>
+          <div class="verify-box real">
+            <div class="lbl">📋 自动生成</div>
+            复盘报告 + 时间线 + 关联 audit 条目 → incidents/*.md
+          </div>
+        </div>
+        <div class="dash-cmd" style="margin-top:16px">$ npx sentinel-agentos server --port <em>3300</em> → /dashboard</div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- 痛点 -->
 <section id="why">
   <div class="container">
@@ -1812,7 +2012,7 @@
         <span class="pain-idx">03 / 05</span>
         <div class="pain-body">
           <div class="pain-prob"><strong>记不住、记不对</strong>向量库≠真记忆</div>
-          <div class="pain-sol"><span class="g">三层人脑记忆</span></div>
+          <div class="pain-sol"><span class="g">三层记忆 + 置信度评级</span></div>
         </div>
       </div>
       <div class="pain glass reveal">
@@ -1861,7 +2061,7 @@
       <div class="phil-card glass reveal">
         <div class="icon">🔌</div>
         <h3>渐进增强</h3>
-        <p>框架无关，一行 wrapAgent 接入。OpenClaw Plugin / CLI / HTTP API 任选。</p>
+        <p>框架无关，一行 wrapAgent 接入。OpenClaw Plugin v1.4 / CLI / HTTP Dashboard 任选。</p>
         <div class="anti">✗ 强绑定单一框架</div>
       </div>
     </div>
@@ -1996,10 +2196,10 @@
   <div class="container">
     <div class="stats-strip glass reveal">
       <div class="stat-card"><div class="stat-num n1">6</div><div class="stat-lbl">Guard Gates</div></div>
-      <div class="stat-card"><div class="stat-num n2">12</div><div class="stat-lbl">Schema 规则</div></div>
-      <div class="stat-card"><div class="stat-num n3">12</div><div class="stat-lbl">反馈信号</div></div>
-      <div class="stat-card"><div class="stat-num n4">99</div><div class="stat-lbl">测试通过</div></div>
-      <div class="stat-card"><div class="stat-num n5">3</div><div class="stat-lbl">沙箱模式</div></div>
+      <div class="stat-card"><div class="stat-num n2">5</div><div class="stat-lbl">审批维度 D1-D5</div></div>
+      <div class="stat-card"><div class="stat-num n3">42</div><div class="stat-lbl">可配置规则</div></div>
+      <div class="stat-card"><div class="stat-num n4">405</div><div class="stat-lbl">测试通过</div></div>
+      <div class="stat-card"><div class="stat-num n5">4</div><div class="stat-lbl">Dashboard Tab</div></div>
       <div class="stat-card"><div class="stat-num n6">:3300</div><div class="stat-lbl">HTTP API</div></div>
     </div>
   </div>
@@ -2011,7 +2211,7 @@
     <div class="sec-hd center reveal">
       <div class="sec-label">Integration</div>
       <h2 class="sec-title">CLI · SDK · HTTP · Plugin</h2>
-      <p class="sec-sub">本地调试、框架嵌入、远程服务、OpenClaw 原生插件 — 同一套 Guard 内核，四种入口。</p>
+      <p class="sec-sub">本地调试、框架嵌入、Dashboard 服务、OpenClaw 原生插件 — 同一套 Guard 内核，四种入口。</p>
     </div>
     <div class="integrate-grid">
       <div class="int-card glass reveal">
@@ -2030,16 +2230,16 @@
       </div>
       <div class="int-card glass reveal">
         <div class="mode">MODE 03</div>
-        <h3>HTTP API</h3>
-        <p>独立服务部署，任意语言调用。pre/post pipeline、审计查询、反馈上报全 REST 化。</p>
-        <div class="int-code">POST localhost:<span class="hl">3300</span>/pipeline/pre</div>
+        <h3>HTTP API + Dashboard</h3>
+        <p>独立服务部署，REST 化 pipeline/审计/反馈。内置 Dashboard — 概览、7 日趋势、工具热力图、事故复盘。</p>
+        <div class="int-code">GET localhost:<span class="hl">3300</span>/dashboard · /api/stats · /api/incidents</div>
         <span class="int-tag">跨语言</span>
       </div>
       <div class="int-card glass reveal">
         <div class="mode">MODE 04</div>
-        <h3>OpenClaw Plugin</h3>
-        <p>框架层自动拦截所有工具调用，注册 before/after/session 三个 hook，Agent 完全无感。配套 <strong>sentinel-guard</strong> Skill 可手动包装 execute()。</p>
-        <div class="int-code">openclaw plugins install <span class="hl">sentinel-agentos</span><br>openclaw gateway restart</div>
+        <h3>OpenClaw Plugin v1.4</h3>
+        <p>框架层自动拦截工具调用 — D1-D5 智能审批、42 条可配置规则热加载、Circuit Breaker 熔断、episodic 记忆注入。</p>
+        <div class="int-code">openclaw plugins install <span class="hl">sentinel-agentos-plugin</span><br>openclaw gateway restart</div>
         <span class="int-tag plug">OpenClaw 首选</span>
       </div>
     </div>
@@ -2084,12 +2284,14 @@
           <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npx sentinel-agentos validate write_file path=<span class="term-highlight">.env</span></span></div>
           <div class="term-line"><span class="term-comment"># → Schema FAIL: pathDeny 拦截敏感路径</span></div>
           <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npx sentinel-agentos audit --limit 5</span></div>
+          <div class="term-line"><span class="term-comment"># Dashboard 可观测</span></div>
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npx sentinel-agentos server --port <span class="term-highlight">3300</span></span></div>
         </div>
       </div>
     </div>
 
     <div class="install-note reveal">
-      还有 <strong>sentinel-light.js</strong> 零依赖轻量版 — 单文件拷贝即可启用 Guard 校验
+      <strong>sentinel-light.js</strong> 零依赖轻量版 · <strong>.agentos/rules.json</strong> 自定义规则热加载 · <strong>Dashboard</strong> 一键启动 <code>npx sentinel-agentos server</code>
     </div>
 
     <div class="install-actions reveal">
@@ -2112,13 +2314,13 @@
 <footer>
   <div class="container">
     <div class="foot-brand brand-lockup">
-      <img src="logo.svg" alt="">
+      <svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><use href="#sentinel-logo"/></svg>
       <span class="brand-text">
         <span class="brand-top">Sentinel</span>
         <span class="brand-bottom">AgentOS</span>
       </span>
     </div>
-    <p>MIT 开源 · 用确定性让 Agent 可信</p>
+    <p>MIT 开源 · v0.4.1 · 用确定性让 Agent 可信</p>
   </div>
 </footer>
 
@@ -2190,8 +2392,9 @@
   // Nav + side rail scroll spy
   const sections = [...document.querySelectorAll('section[id]')];
   const sectionNames = {
-    why: '为什么', demo: '亮点', guard: 'Guard', memory: 'Memory',
-    eval: 'Evaluator', integrate: '接入', install: '安装', philosophy: 'Philosophy', feedback: 'Feedback'
+    why: '为什么', demo: '亮点', approval: '审批', dashboard: 'Dashboard',
+    guard: 'Guard', memory: 'Memory', eval: 'Evaluator', integrate: '接入',
+    install: '安装', philosophy: 'Philosophy', feedback: 'Feedback'
   };
   const navLinks = document.querySelectorAll('.nav-links a[href^="#"]');
   const archLayers = document.querySelectorAll('.arch-layer[data-rail]');
