@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sentinel AgentOS - Promo</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#060912;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+.container{width:1440px;height:900px;background:linear-gradient(135deg,#060912 0%,#0c111f 50%,#0a0e1a 100%);border-radius:16px;padding:60px 70px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+
+/* 装饰光晕 */
+.glow1{position:absolute;top:-120px;right:-80px;width:500px;height:500px;background:radial-gradient(circle,rgba(34,211,238,.12),transparent 70%)}
+.glow2{position:absolute;bottom:-150px;left:-100px;width:400px;height:400px;background:radial-gradient(circle,rgba(139,92,246,.08),transparent 70%)}
+.glow3{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:800px;height:800px;background:radial-gradient(circle,rgba(59,130,246,.04),transparent 60%)}
+
+/* 左上 Logo */
+.logo{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;color:#e2e7f2;margin-bottom:50px;position:relative;z-index:1}
+.logo i{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#22d3ee,#3b82f6,#8b5cf6);display:grid;place-items:center;font-size:18px}
+.logo span{font-weight:400;color:#4e5c79;font-size:13px;margin-left:4px}
+
+/* 中心大标题 */
+.hero{flex:1;display:flex;flex-direction:column;justify-content:center;position:relative;z-index:1;padding-left:20px}
+.hero .tagline-top{font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:4px;color:#3b82f6;margin-bottom:16px}
+.hero h1{font-size:64px;font-weight:800;color:#f8fafc;line-height:1.1;letter-spacing:-1.5px;max-width:850px}
+.hero h1 .g{background:linear-gradient(135deg,#22d3ee,#3b82f6,#8b5cf6);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.hero h1 .hl{color:#22d3ee}
+.hero .desc{font-size:18px;color:#64748b;line-height:1.6;max-width:750px;margin-top:20px}
+.hero .badges{display:flex;gap:12px;margin-top:28px}
+.hero .badges .b{padding:8px 18px;border-radius:20px;font-size:13px;font-weight:600}
+.hero .badges .b1{background:rgba(34,211,238,.1);color:#22d3ee;border:1px solid rgba(34,211,238,.2)}
+.hero .badges .b2{background:rgba(59,130,246,.1);color:#3b82f6;border:1px solid rgba(59,130,246,.2)}
+.hero .badges .b3{background:rgba(139,92,246,.1);color:#8b5cf6;border:1px solid rgba(139,92,246,.2)}
+.hero .badges .b4{background:rgba(16,185,129,.1);color:#10b981;border:1px solid rgba(16,185,129,.2)}
+
+/* 右侧功能网格 */
+.grid{position:absolute;right:60px;top:50%;transform:translateY(-50%);display:grid;grid-template-columns:1fr 1fr;gap:12px;z-index:1}
+.g-item{width:160px;height:80px;background:rgba(12,17,31,.8);border:1px solid #182035;border-radius:12px;padding:14px;display:flex;flex-direction:column;justify-content:center;backdrop-filter:blur(8px)}
+.g-item .n{font-size:12px;font-weight:600;color:#e2e7f2;margin-bottom:3px}
+.g-item .v{font-size:10px;color:#4e5c79}
+.g-item .tag-icon{font-size:16px;margin-bottom:4px}
+.g-item.g1{border-color:rgba(34,211,238,.3)}
+.g-item.g2{border-color:rgba(59,130,246,.3)}
+.g-item.g3{border-color:rgba(139,92,246,.3)}
+.g-item.g4{border-color:rgba(16,185,129,.3)}
+
+/* 底部 */
+.bottom{flex-shrink:0;display:flex;align-items:center;justify-content:space-between;margin-top:30px;padding-top:20px;border-top:1px solid rgba(24,32,53,.5);position:relative;z-index:1}
+.bottom .l{display:flex;align-items:center;gap:20px}
+.bottom .l .s{display:flex;align-items:center;gap:6px;font-size:13px;color:#4e5c79}
+.bottom .l .s b{color:#94a3b8}
+.bottom .r{display:flex;align-items:center;gap:10px;font-size:13px;color:#4e5c79}
+.bottom .r .btn{padding:10px 24px;background:linear-gradient(135deg,#22d3ee,#3b82f6);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="glow1"></div><div class="glow2"></div><div class="glow3"></div>
+
+  <div class="logo"><i>🛡️</i>Sentinel AgentOS <span>v0.3.11</span></div>
+
+  <div class="hero">
+    <div class="tagline-top">✦ Guard · Memory · Evaluation</div>
+    <h1>Make Every AI Agent<br><span class="g">Reliable, Auditable</span><br>and <span class="hl">Self-Improving</span></h1>
+    <div class="desc">Open source framework that adds deterministic safety,<br>human-like memory, and automated quality measurement<br>to any AI agent — in under 5 minutes.</div>
+    <div class="badges">
+      <span class="b b1">🛡️ Deterministic Guard</span>
+      <span class="b b2">🧠 3-Tier Memory</span>
+      <span class="b b3">📊 Auto Evaluation</span>
+      <span class="b b4">🔓 Open Source MIT</span>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="g-item g1"><div class="tag-icon">🛡️</div><div class="n">4 Gate Layers</div><div class="v">Schema · Risk · Snapshot · Verify</div></div>
+    <div class="g-item g2"><div class="tag-icon">📋</div><div class="n">251+ Ops Today</div><div class="v">Real-time audit tracking</div></div>
+    <div class="g-item g3"><div class="tag-icon">⚡</div><div class="n">Zero LLM Dep</div><div class="v">Deterministic rules only</div></div>
+    <div class="g-item g4"><div class="tag-icon">📜</div><div class="n">JSONL Audit Trail</div><div class="v">Every call, every result</div></div>
+  </div>
+
+  <div class="bottom">
+    <div class="l">
+      <div class="s">🔗 <b>GitHub</b> · jishuanjimingtian/sentinel-agentos</div>
+      <div class="s">📦 <b>npm</b> · sentinel-agentos</div>
+    </div>
+    <div class="r">
+      <span>⭐ Star us on GitHub</span>
+      <span class="btn">Get Started →</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

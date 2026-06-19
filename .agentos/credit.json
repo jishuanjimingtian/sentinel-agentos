@@ -1,0 +1,123 @@
+{
+  "agents": {
+    "agent-a": {
+      "level": 3,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "agent-b": {
+      "level": 1,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "health-agent": {
+      "level": 2,
+      "totalOps": 21,
+      "denied": 0,
+      "allowedOps": 21,
+      "lastActivity": 1781839760053,
+      "consecutiveSuccesses": 1,
+      "consecutiveDenials": 0
+    },
+    "test-agent": {
+      "level": 1,
+      "totalOps": 145,
+      "denied": 40,
+      "allowedOps": 105,
+      "lastActivity": 1781839759899,
+      "consecutiveSuccesses": 2,
+      "consecutiveDenials": 0
+    },
+    "agent-c": {
+      "level": 3,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "agent-d": {
+      "level": 1,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L3-1781839365612": {
+      "level": 3,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L1-1781839365612": {
+      "level": 1,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L3-1781839576542": {
+      "level": 3,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L1-1781839576542": {
+      "level": 1,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "agent": {
+      "level": 2,
+      "totalOps": 4,
+      "denied": 0,
+      "allowedOps": 4,
+      "lastActivity": 1781839757067,
+      "consecutiveSuccesses": 4,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L3-1781839759996": {
+      "level": 3,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L1-1781839759996": {
+      "level": 1,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    }
+  },
+  "defaultLevel": 0,
+  "lastUpdated": 1781839760053
+}

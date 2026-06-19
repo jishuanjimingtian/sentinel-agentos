@@ -26,6 +26,16 @@ export { AgentProfiler } from './evaluator/profiler';
 export type { AgentProfile } from './evaluator/profiler';
 export { AgentOSAPI } from './api';
 
+// --- v1.4 智能审批 ---
+export { BehaviorModel } from './behavior-model';
+export type { BehaviorEntry, BehaviorStats } from './behavior-model';
+export { CreditSystem, creditToConfidenceBoost, creditToConfidenceThresholds } from './credit';
+export type { CreditLevel, AgentCredit, CreditConfig } from './credit';
+export { computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5 } from './scoring';
+export type { D1Score, D2Score, D3Score, D4Score, D5Score, ConfidenceResult } from './scoring';
+export { findAlternative, findAlternativesByPrefix, getAllAlternatives } from './alternatives';
+export type { Alternative } from './alternatives';
+
 // --- Integration Layer ---
 export { createServer } from './server';
 export { wrapAgent } from './middleware/wrapper';

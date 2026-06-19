@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Sentinel AgentOS - Architecture</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#060912;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;padding:20px}
+.container{width:1440px;height:900px;background:#060912;border-radius:16px;padding:40px;display:flex;flex-direction:column;position:relative;overflow:hidden}
+h1{color:#e2e7f2;font-size:28px;font-weight:700;letter-spacing:1px;margin-bottom:8px}
+h1 span{color:#3b82f6}
+.sub{color:#4e5c79;font-size:14px;letter-spacing:2px;margin-bottom:40px;text-transform:uppercase}
+
+/* 三层架构 */
+.layers{display:flex;gap:24px;flex:1;min-height:0}
+.layer{flex:1;border:1px solid #182035;border-radius:14px;padding:24px;display:flex;flex-direction:column;background:linear-gradient(135deg,#0c111f,#0a0e1a);position:relative;overflow:hidden}
+.layer::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.layer:nth-child(1)::before{background:linear-gradient(90deg,#22d3ee,#3b82f6)}
+.layer:nth-child(2)::before{background:linear-gradient(90deg,#3b82f6,#6366f1)}
+.layer:nth-child(3)::before{background:linear-gradient(90deg,#6366f1,#8b5cf6)}
+
+.l-t{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.l-t .icon{width:36px;height:36px;border-radius:8px;display:grid;place-items:center;font-size:18px}
+.l-t .icon.g{border:1px solid #22d3ee;color:#22d3ee}
+.l-t .icon.p{border:1px solid #3b82f6;color:#3b82f6}
+.l-t .icon.e{border:1px solid #8b5cf6;color:#8b5cf6}
+.l-t .name{font-size:18px;font-weight:700;color:#e2e7f2}
+.l-t .badge{font-size:10px;font-weight:600;padding:2px 8px;border-radius:4px;margin-left:auto}
+.l-t .badge.g{background:rgba(34,211,238,.1);color:#22d3ee}
+.l-t .badge.p{background:rgba(59,130,246,.1);color:#3b82f6}
+.l-t .badge.e{background:rgba(139,92,246,.1);color:#8b5cf6}
+
+.l-sub{font-size:12px;color:#4e5c79;margin-bottom:20px;line-height:1.5}
+.comps{display:flex;flex-direction:column;gap:10px;flex:1}
+.comp{background:rgba(24,32,53,.4);border:1px solid rgba(24,32,53,.6);border-radius:10px;padding:14px 16px;transition:.15s}
+.comp:hover{border-color:rgba(59,130,246,.3)}
+.comp .h{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.comp .h .t{font-size:13px;font-weight:600;color:#e2e7f2}
+.comp .h .d{font-size:11px;color:#4e5c79;margin-left:auto}
+.comp .desc{font-size:12px;color:#4e5c79;line-height:1.4}
+
+/* 底部数据流 */
+.flow-bar{flex-shrink:0;margin-top:20px;display:flex;align-items:center;gap:16px;padding:16px 24px;background:linear-gradient(135deg,#0c111f,#0a0e1a);border:1px solid #182035;border-radius:10px}
+.flow-bar .item{display:flex;align-items:center;gap:8px;font-size:13px;color:#94a3b8}
+.flow-bar .item b{width:8px;height:8px;border-radius:50%}
+.flow-bar .arrow{color:#4e5c79;font-size:18px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🛡️ Sentinel <span>AgentOS</span></h1>
+  <div class="sub">Three-Layer Architecture for Reliable AI Agents</div>
+
+  <div class="layers">
+    <!-- Guard Layer -->
+    <div class="layer">
+      <div class="l-t"><div class="icon g">🛡️</div><span class="name">Guard Layer</span><span class="badge g">Deterministic</span></div>
+      <div class="l-sub">Pre/post execution validation. No LLM dependency — rules are hard-coded and predictable.</div>
+      <div class="comps">
+        <div class="comp"><div class="h"><span class="t">Schema Gate</span><span class="d">✅ 0ms</span></div><div class="desc">Validates tool parameter types, ranges and structure before execution</div></div>
+        <div class="comp"><div class="h"><span class="t">Risk Gate</span><span class="d">⚠️ 0-100</span></div><div class="desc">4-dimensional risk scoring: Impact, Reversibility, Sensitivity, Error Rate</div></div>
+        <div class="comp"><div class="h"><span class="t">Snapshot Gate</span><span class="d">📸 Pre/Post</span></div><div class="desc">File integrity check — captures state before and after each operation</div></div>
+        <div class="comp"><div class="h"><span class="t">Verify Gate</span><span class="d">🔍 Pass/Fail</span></div><div class="desc">Result truth-checking — did the tool actually do what it claimed?</div></div>
+      </div>
+    </div>
+
+    <!-- Memory Layer -->
+    <div class="layer">
+      <div class="l-t"><div class="icon p">🧠</div><span class="name">Memory Layer</span><span class="badge p">3-Tier</span></div>
+      <div class="l-sub">Human-inspired memory architecture with automatic compression and forgetting.</div>
+      <div class="comps">
+        <div class="comp"><div class="h"><span class="t">Working Memory</span><span class="d">⚡ Short-term</span></div><div class="desc">Current conversation context, recent tool calls, active state</div></div>
+        <div class="comp"><div class="h"><span class="t">Episodic Memory</span><span class="d">📋 Sessions</span></div><div class="desc">Session history with auto-summarization and compression</div></div>
+        <div class="comp"><div class="h"><span class="t">Semantic Memory</span><span class="d">💡 Long-term</span></div><div class="desc">Learned facts, user preferences, persistent rules across sessions</div></div>
+      </div>
+    </div>
+
+    <!-- Evaluation Layer -->
+    <div class="layer">
+      <div class="l-t"><div class="icon e">📊</div><span class="name">Evaluation Layer</span><span class="badge e">Auto</span></div>
+      <div class="l-sub">Continuous agent quality measurement and feedback collection.</div>
+      <div class="comps">
+        <div class="comp"><div class="h"><span class="t">Pre-Exec Evaluator</span><span class="d">📈 Score</span></div><div class="desc">Predicts operation risk before execution based on historical data</div></div>
+        <div class="comp"><div class="h"><span class="t">Profiler</span><span class="d">⏱️ Runtime</span></div><div class="desc">Measures latency, success rate, and behavioral patterns per session</div></div>
+        <div class="comp"><div class="h"><span class="t">Feedback Engine</span><span class="d">🔄 Implicit</span></div><div class="desc">Auto-detects user corrections, retries, and satisfaction signals</div></div>
+        <div class="comp"><div class="h"><span class="t">Audit Log</span><span class="d">📜 JSONL</span></div><div class="desc">Immutable audit trail for every tool call with full context</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom flow -->
+  <div class="flow-bar">
+    <div class="item"><b style="background:#22d3ee"></b>Any Agent Framework</div>
+    <span class="arrow">→</span>
+    <div class="item"><b style="background:#3b82f6"></b>Sentinel AgentOS</div>
+    <span class="arrow">→</span>
+    <div class="item"><b style="background:#8b5cf6"></b>Reliable · Auditable · Self-Improving</div>
+  </div>
+</div>
+</body>
+</html>

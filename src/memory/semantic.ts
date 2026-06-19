@@ -117,10 +117,12 @@ export class SemanticMemoryStore {
 
   /** Learn a new rule or reinforce an existing one */
   learnRule(rule: string, source: string): void {
-    const existing = this.memory.learnedRules.find((r) => r.rule === rule);
+    // 标准化：trim + 压缩连续空白，避免同一规则因空格差异被重复添加
+    const normalized = rule.trim().replace(/\s+/g, ' ');
+    const existing = this.memory.learnedRules.find((r) => r.rule.trim().replace(/\s+/g, ' ') === normalized);
 
     if (existing) {
-      // Reinforce: asymptotically approach 0.85 (never hits 1.0)
+      // 同一规则：合并来源后渐近收敛置信度
       existing.confidence = 0.85 - (0.85 - existing.confidence) * 0.5;
       existing.lastReferenced = Date.now();
       if (!existing.source.includes(source)) {
@@ -128,7 +130,7 @@ export class SemanticMemoryStore {
       }
     } else {
       this.memory.learnedRules.push({
-        rule,
+        rule: normalized,
         confidence: 0.5,
         source: [source],
         lastReferenced: Date.now(),
@@ -136,6 +138,37 @@ export class SemanticMemoryStore {
     }
 
     this.save();
+  }
+
+  /**
+   * Deduplicate and merge similar learned rules.
+   * Rules with the same normalized content (trim + collapse whitespace)
+   * are merged by taking the max confidence and union of sources.
+   */
+  mergeDuplicateRules(): number {
+    const normalize = (s: string) => s.trim().replace(/\s+/g, ' ');
+    const seen = new Map<string, LearnedRule>();
+    let removed = 0;
+
+    for (const rule of [...this.memory.learnedRules]) {
+      const key = normalize(rule.rule);
+      const existing = seen.get(key);
+      if (existing) {
+        // 合并：取最高置信度 + 合并来源
+        existing.confidence = Math.max(existing.confidence, rule.confidence);
+        existing.lastReferenced = Math.max(existing.lastReferenced, rule.lastReferenced);
+        for (const s of rule.source) {
+          if (!existing.source.includes(s)) existing.source.push(s);
+        }
+        this.memory.learnedRules = this.memory.learnedRules.filter(r => r !== rule);
+        removed++;
+      } else {
+        seen.set(key, rule);
+      }
+    }
+
+    if (removed > 0) this.save();
+    return removed;
   }
 
   /** Get rules above a confidence threshold — updates lastReferenced on read */
@@ -188,7 +221,7 @@ export class SemanticMemoryStore {
    * Generate a context summary for injection into the session prompt.
    * Concise but informative — designed to fit in a system prompt prefix.
    */
-  generateContextSummary(maxChars = 3000): string {
+  generateContextSummary(maxChars = 1000): string {
     const parts: string[] = ['[AgentOS Semantic Memory]', ''];
 
     // User facts (non-stale only)

@@ -82,9 +82,15 @@ export class AgentProfiler {
 
   /**
    * Build the current agent profile.
+   *
+   * @param sessionId - Optional session identifier for user satisfaction lookup
+   * @param totalOpsOverride - Optional total ops from external source (AuditLog), used when
+   *   profiler is called from a lightweight context that doesn't record full evaluation cycles
    */
-  getProfile(sessionId?: string): AgentProfile {
-    const totalOps = this.preMetrics.length;
+  getProfile(sessionId?: string, totalOpsOverride?: number): AgentProfile {
+    const evaluatedOps = this.preMetrics.length;
+    const totalOps = totalOpsOverride ?? evaluatedOps;
+    const hasEvaluationData = evaluatedOps > 0;
 
     // Pre-exec scores
     const preExecScore = this.average(
@@ -159,14 +165,14 @@ export class AgentProfiler {
       overallScore: Number.isNaN(overallScore) ? 50 : overallScore, // 0-100, default 50 if no data
       totalOps,
       breakdown: {
-        preExec: totalOps > 0 ? Math.round(preExecScore * 100) / 100 : null,
-        runtime: totalOps > 0 ? Math.round(runtimeScore * 100) / 100 : null,
-        postExec: totalOps > 0 ? Math.round(postExecScore * 100) / 100 : null,
+        preExec: hasEvaluationData ? Math.round(preExecScore * 100) / 100 : null,
+        runtime: hasEvaluationData ? Math.round(runtimeScore * 100) / 100 : null,
+        postExec: hasEvaluationData ? Math.round(postExecScore * 100) / 100 : null,
         userSatisfaction: Math.round(satisfactionScore * 100) / 100,
       },
       trends: {
         improving: recentScore > overallScore,
-        recentOps: recentPre.length,
+        recentOps: hasEvaluationData ? recentPre.length : totalOps,
         recentScore: Math.round(recentScore) / 100,
       },
       warnings,

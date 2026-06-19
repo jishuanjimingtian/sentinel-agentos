@@ -1,0 +1,116 @@
+{
+  "pending": [],
+  "resolved": [
+    {
+      "id": "approve_1781778642245_1",
+      "toolName": "exec",
+      "params": {
+        "command": "npm publish"
+      },
+      "confidence": 72,
+      "dimensions": {
+        "d1": {
+          "score": 70,
+          "raw": 2.5
+        },
+        "d2": {
+          "score": 85,
+          "matchLevel": "same-tool",
+          "count": 12
+        },
+        "d3": {
+          "score": 80,
+          "matched": 3,
+          "total": 5
+        },
+        "d4": {
+          "score": 100,
+          "pathType": "无路径操作"
+        },
+        "d5": {
+          "score": 60,
+          "offHours": false,
+          "freq": 1
+        }
+      },
+      "createdAt": 1781778642245,
+      "status": "approved",
+      "result": "approved",
+      "source": "local"
+    },
+    {
+      "id": "approve_1781778649267_2",
+      "toolName": "exec",
+      "params": {
+        "command": "git push --force origin main"
+      },
+      "confidence": 45,
+      "dimensions": {
+        "d1": {
+          "score": 40,
+          "raw": 4.5
+        },
+        "d2": {
+          "score": 30,
+          "matchLevel": "none",
+          "count": 0
+        },
+        "d3": {
+          "score": 60,
+          "matched": 2,
+          "total": 5
+        },
+        "d4": {
+          "score": 100,
+          "pathType": "无路径操作"
+        },
+        "d5": {
+          "score": 55,
+          "offHours": true,
+          "freq": 3
+        }
+      },
+      "createdAt": 1781778649267,
+      "status": "approved",
+      "result": "approved",
+      "source": "wechat"
+    },
+    {
+      "id": "approve_1781778654304_3",
+      "toolName": "exec",
+      "params": {
+        "command": "npx sentinel-agentos reset --force"
+      },
+      "confidence": 25,
+      "dimensions": {
+        "d1": {
+          "score": 20,
+          "raw": 6.5
+        },
+        "d2": {
+          "score": 10,
+          "matchLevel": "none",
+          "count": 0
+        },
+        "d3": {
+          "score": 30,
+          "matched": 0,
+          "total": 5
+        },
+        "d4": {
+          "score": 100,
+          "pathType": "无路径操作"
+        },
+        "d5": {
+          "score": 35,
+          "offHours": true,
+          "freq": 1
+        }
+      },
+      "createdAt": 1781778654304,
+      "status": "denied",
+      "result": "denied",
+      "source": "wechat"
+    }
+  ]
+}

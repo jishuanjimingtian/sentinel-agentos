@@ -1,4 +1,4 @@
-# Sentinel AgentOS 设计文档
+# AgentOS 设计文档
 
 > 版本：v0.1.0-draft
 > 状态：设计阶段

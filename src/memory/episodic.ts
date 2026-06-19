@@ -150,7 +150,7 @@ export class EpisodicMemory {
    * Returns: high-importance events from the last 7 days,
    * plus the latest milestone and corrections.
    */
-  getContextualEvents(days = 7, max = 20): EpisodicEvent[] {
+  getContextualEvents(days = 7, max = 8): EpisodicEvent[] {
     const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
 
     return this.events
@@ -162,8 +162,8 @@ export class EpisodicMemory {
   /**
    * Generate a context summary string for injection into session prompt.
    */
-  generateContextSummary(maxChars = 2000): string {
-    const recent = this.getContextualEvents();
+  generateContextSummary(maxChars = 800): string {
+    const recent = this.getContextualEvents(7, 5);
     if (recent.length === 0) return '';
 
     const lines: string[] = ['[AgentOS Episodic Memory]', ''];
@@ -174,7 +174,7 @@ export class EpisodicMemory {
       const importance = event.importance >= 0.7 ? '⚠️' : '';
       const content = event.compression === 'one-liner'
         ? event.content
-        : event.content.slice(0, 200);
+        : event.content.slice(0, 150);
 
       lines.push(`${icon} ${importance} [${date}] ${content}`);
     }
@@ -184,6 +184,35 @@ export class EpisodicMemory {
       result = result.slice(0, maxChars - 3) + '...';
     }
     return result;
+  }
+
+  /**
+   * Generate a searchable markdown snapshot of all events
+   * for indexing by OpenClaw's memory_search.
+   */
+  getSearchableSnapshot(maxEvents = 50): string {
+    const all = this.getAll().slice(0, maxEvents);
+    if (all.length === 0) return '';
+
+    const lines: string[] = [
+      '# AgentOS Episodic Memory Index',
+      '',
+      `> ${this.count} events total | ${all.length} shown | ${new Date().toISOString().split('T')[0]}`,
+      '',
+    ];
+
+    for (const event of all) {
+      const date = new Date(event.timestamp).toISOString().split('T')[0];
+      const icon = this.typeIcon(event.type);
+      const content = event.content.length > 300
+        ? event.content.slice(0, 300) + '...'
+        : event.content;
+      const tags = event.tags.length > 0 ? ` [${event.tags.join(', ')}]` : '';
+      const imp = event.importance >= 0.7 ? ` ★${Math.round(event.importance * 100)}%` : '';
+      lines.push(`${icon} ${date}${imp}${tags}: ${content}`);
+    }
+
+    return lines.join('\n');
   }
 
   /** Count events matching a set of tags */

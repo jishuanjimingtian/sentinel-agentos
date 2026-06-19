@@ -1,7 +1,4 @@
 node_modules/
 dist/
-.agentos/
-*.log
-
-# Browser automation data
-.browser-data/
+*.js
+*.map

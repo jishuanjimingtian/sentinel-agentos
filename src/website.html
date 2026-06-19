@@ -1,0 +1,2314 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sentinel AgentOS — AI Agent 操作系统</title>
+<meta name="description" content="确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进。">
+<meta name="keywords" content="AgentOS,AI Agent,Agent 操作系统,Guard,Memory,Evaluator,Agent 安全,Agent 审计,AI 治理">
+<meta name="author" content="Sentinel AgentOS">
+<meta name="robots" content="index, follow">
+<meta property="og:title" content="Sentinel AgentOS — AI Agent 操作系统">
+<meta property="og:description" content="确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进。">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.sentinelagentos.com">
+<meta property="og:image" content="https://www.sentinelagentos.com/og-image.png">
+<link rel="canonical" href="https://www.sentinelagentos.com">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Sentinel AgentOS",
+  "description": "AI Agent 操作系统 — 确定性 Guard 层 + 分层记忆 + 自动评估",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS, Windows",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+<link rel="icon" href="logo-icon.svg" type="image/svg+xml">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+  :root {
+    --bg: #020408;
+    --bg-elevated: #060b14;
+    --surface: rgba(12, 18, 36, .78);
+    --surface-hover: rgba(16, 24, 48, .92);
+    --border: rgba(255, 255, 255, .08);
+    --border-glow: rgba(34, 211, 238, .22);
+    --text: #f1f5f9;
+    --muted: #8b9cb3;
+    --cyan: #2dd4bf;
+    --blue: #60a5fa;
+    --purple: #c4b5fd;
+    --green: #4ade80;
+    --gold: #fcd34d;
+    --red: #f87171;
+    --grad: linear-gradient(135deg, #2dd4bf 0%, #60a5fa 48%, #c4b5fd 100%);
+    --grad-text: linear-gradient(92deg, #5eead4, #93c5fd, #c4b5fd, #5eead4);
+    --grad-border: linear-gradient(135deg, rgba(45,212,191,.45), rgba(255,255,255,.06) 40%, rgba(196,181,253,.35));
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+    --radius: 22px;
+    --radius-sm: 14px;
+    --shadow: 0 24px 64px rgba(0,0,0,.45);
+    --shadow-glow: 0 0 80px rgba(45,212,191,.08);
+    --glass: blur(20px) saturate(1.5);
+    --ease: cubic-bezier(.22, 1, .36, 1);
+    --nav-h: 76px;
+    --content-w: 1200px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { height: 100%; }
+  html::-webkit-scrollbar { width: 0; display: none; }
+  body {
+    height: 100%;
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse 120% 80% at 50% -30%, rgba(45,212,191,.07), transparent 55%),
+      radial-gradient(ellipse 70% 50% at 100% 50%, rgba(96,165,250,.05), transparent 50%),
+      radial-gradient(ellipse 60% 40% at 0% 80%, rgba(196,181,253,.04), transparent 50%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'Outfit', -apple-system, sans-serif;
+    overflow-x: hidden;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-decoration: none; }
+
+  /* ── 主滚动区（滚动条从导航栏下沿开始） ── */
+  .page-scroller {
+    position: fixed;
+    top: var(--nav-h);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: smooth;
+    transition: top .35s;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+  }
+  .page-scroller.is-scrolling {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(45, 212, 191, .4) rgba(255, 255, 255, .04);
+  }
+  .page-scroller::-webkit-scrollbar { width: 8px; }
+  .page-scroller::-webkit-scrollbar-track {
+    background: transparent;
+    border-left: 1px solid transparent;
+    transition: background .25s, border-color .25s;
+  }
+  .page-scroller.is-scrolling::-webkit-scrollbar-track {
+    background: rgba(2, 4, 8, .6);
+    border-left-color: rgba(255, 255, 255, .05);
+  }
+  .page-scroller::-webkit-scrollbar-thumb {
+    border-radius: 8px;
+    background: transparent;
+    border: 2px solid transparent;
+    transition: background .25s, box-shadow .25s, border-color .25s;
+  }
+  .page-scroller.is-scrolling::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(45, 212, 191, .5), rgba(96, 165, 250, .35));
+    border-color: rgba(2, 4, 8, .8);
+    box-shadow: 0 0 10px rgba(45, 212, 191, .15);
+  }
+  .page-scroller::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, rgba(45, 212, 191, .75), rgba(96, 165, 250, .55));
+    box-shadow: 0 0 14px rgba(45, 212, 191, .3);
+  }
+
+  /* ── 动态背景层 ── */
+  .bg-canvas {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    opacity: .38;
+    mask-image: radial-gradient(ellipse 85% 75% at 50% 45%, #000 25%, transparent 78%);
+    -webkit-mask-image: radial-gradient(ellipse 85% 75% at 50% 45%, #000 25%, transparent 78%);
+  }
+  .bg-aurora {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  }
+  .bg-aurora::before,
+  .bg-aurora::after {
+    content: ''; position: absolute; border-radius: 50%; filter: blur(100px);
+    animation: aurora-drift 18s ease-in-out infinite;
+  }
+  .bg-aurora::before {
+    width: 55vw; height: 55vw; top: -15%; left: -10%;
+    background: radial-gradient(circle, rgba(34,211,238,.14), transparent 70%);
+  }
+  .bg-aurora::after {
+    width: 50vw; height: 50vw; bottom: -10%; right: -8%;
+    background: radial-gradient(circle, rgba(139,92,246,.12), transparent 70%);
+    animation-delay: -9s; animation-direction: reverse;
+  }
+  @keyframes aurora-drift {
+    0%, 100% { transform: translate(0, 0) scale(1); opacity: .85; }
+    33% { transform: translate(4vw, 3vh) scale(1.08); opacity: 1; }
+    66% { transform: translate(-3vw, -2vh) scale(.95); opacity: .75; }
+  }
+
+  .bg-noise {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none; opacity: .018;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.2' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .bg-orb {
+    position: fixed; border-radius: 50%; filter: blur(90px); pointer-events: none; z-index: 0;
+    will-change: transform;
+  }
+  .bg-orb.a { top: -180px; right: -80px; width: 560px; height: 560px; background: rgba(34,211,238,.14); animation: float 9s ease-in-out infinite; }
+  .bg-orb.b { bottom: 15%; left: -120px; width: 480px; height: 480px; background: rgba(139,92,246,.11); animation: float 11s ease-in-out infinite reverse; }
+  .bg-orb.c { top: 45%; right: 8%; width: 320px; height: 320px; background: rgba(59,130,246,.08); animation: float 13s ease-in-out infinite; animation-delay: -3s; }
+  .bg-orb.d { bottom: -80px; right: 25%; width: 400px; height: 400px; background: rgba(52,211,153,.06); animation: float 10s ease-in-out infinite reverse; animation-delay: -5s; }
+
+  @keyframes float { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(24px,-32px) scale(1.06)} }
+  @keyframes shimmer { 0%{background-position:-200% center} 100%{background-position:200% center} }
+  @keyframes pulse-glow { 0%,100%{box-shadow:0 0 30px rgba(34,211,238,.2)} 50%{box-shadow:0 0 55px rgba(59,130,246,.4)} }
+  @keyframes grad-flow { 0%{background-position:0% center} 100%{background-position:200% center} }
+  @keyframes logo-float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
+  @keyframes scroll-hint { 0%,100%{opacity:.4;transform:translateY(0)} 50%{opacity:1;transform:translateY(6px)} }
+
+  @media (prefers-reduced-motion: reduce) {
+    .bg-canvas { display: none; }
+    .bg-orb, .bg-aurora::before, .bg-aurora::after,
+    .hero-orbit, .hero h1 .grad, .hero-logo-card, .copy-btn::before, .stack-layer,
+    .frame-line, .side-rail::before { animation: none !important; }
+  }
+
+  .wrap {
+    position: relative; z-index: 1;
+  }
+  .page-main { width: 100%; min-width: 0; }
+
+  /* ── 主栏框架线（与侧栏视觉衔接） ── */
+  .frame-line {
+    display: none;
+    position: fixed;
+    top: var(--nav-h);
+    bottom: 0;
+    width: 2px;
+    z-index: 45;
+    pointer-events: none;
+    background: linear-gradient(
+      180deg,
+      rgba(45,212,191,.75) 0%,
+      rgba(96,165,250,.35) 15%,
+      rgba(45,212,191,.15) 45%,
+      rgba(196,181,253,.2) 75%,
+      rgba(45,212,191,.5) 100%
+    );
+    box-shadow: 0 0 16px rgba(45,212,191,.35), 0 0 40px rgba(45,212,191,.12);
+    opacity: .9;
+    transition: top .35s;
+    animation: frame-pulse 4s ease-in-out infinite;
+  }
+  @keyframes frame-pulse {
+    0%, 100% { opacity: .75; filter: brightness(1); }
+    50% { opacity: 1; filter: brightness(1.25); }
+  }
+  .frame-left  { left: calc(50% - var(--content-w) / 2); }
+  .frame-right { left: calc(50% + var(--content-w) / 2); }
+
+  /* ── 两侧翼栏：指挥台框架 ── */
+  .side-rail {
+    display: none;
+    position: fixed;
+    top: var(--nav-h);
+    bottom: 0;
+    z-index: 50;
+    overflow: hidden;
+    transition: top .35s;
+  }
+  .side-rail::before {
+    content: '';
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 3px;
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(180deg, var(--cyan), var(--blue) 40%, var(--purple) 70%, var(--green));
+    box-shadow: 0 0 20px rgba(45,212,191,.55), 0 0 50px rgba(45,212,191,.2);
+    animation: edge-glow 3s ease-in-out infinite;
+  }
+  .side-rail::after {
+    content: '';
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 3px,
+      rgba(255,255,255,.012) 3px, rgba(255,255,255,.012) 4px
+    );
+    opacity: .6;
+  }
+  @keyframes edge-glow {
+    0%, 100% { opacity: .7; }
+    50% { opacity: 1; }
+  }
+  .rail-left::before  { right: 0; }
+  .rail-right::before { left: 0; }
+  .rail-fill {
+    width: 100%;
+    max-width: 268px;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    padding: 44px 0 28px;
+    overflow-x: hidden;
+    position: relative;
+    z-index: 1;
+  }
+  .rail-left {
+    left: 0;
+    width: calc((100vw - var(--content-w)) / 2);
+    min-width: 120px;
+    max-width: 340px;
+    justify-content: flex-end;
+    background:
+      linear-gradient(90deg, rgba(2,4,8,.97) 0%, rgba(6,14,28,.88) 55%, rgba(10,20,40,.5) 100%);
+    box-shadow: inset -40px 0 80px rgba(45,212,191,.06), 8px 0 40px rgba(0,0,0,.25);
+  }
+  .rail-right {
+    right: 0;
+    width: calc((100vw - var(--content-w)) / 2);
+    min-width: 120px;
+    max-width: 340px;
+    justify-content: flex-start;
+    background:
+      linear-gradient(270deg, rgba(2,4,8,.97) 0%, rgba(6,14,28,.88) 55%, rgba(10,20,40,.5) 100%);
+    box-shadow: inset 40px 0 80px rgba(96,165,250,.06), -8px 0 40px rgba(0,0,0,.25);
+  }
+  .rail-left .rail-fill  {
+    padding-right: clamp(12px, 2vw, 28px); margin-left: auto;
+    overflow-y: auto;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+  }
+  .rail-left:hover .rail-fill {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(45, 212, 191, .35) rgba(255, 255, 255, .04);
+  }
+  .rail-left .rail-fill::-webkit-scrollbar { width: 0; background: transparent; }
+  .rail-left:hover .rail-fill::-webkit-scrollbar { width: 5px; }
+  .rail-left .rail-fill::-webkit-scrollbar-track { background: transparent; }
+  .rail-left .rail-fill::-webkit-scrollbar-thumb {
+    border-radius: 5px;
+    background: transparent;
+    transition: background .25s ease;
+  }
+  .rail-left:hover .rail-fill::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(45, 212, 191, .4), rgba(96, 165, 250, .25));
+  }
+  .rail-left .rail-body {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+  .rail-left .rail-foot {
+    margin-top: 12px;
+    border-top-color: rgba(45,212,191,.12);
+    box-shadow: 0 -8px 24px rgba(45,212,191,.04);
+  }
+  .rail-right .rail-fill { padding-left: clamp(12px, 2vw, 28px); margin-right: auto; }
+
+  .rail-head {
+    flex-shrink: 0;
+    margin-bottom: 20px;
+  }
+  .rail-head .sec-label {
+    margin-bottom: 0;
+    font-size: 10px;
+    letter-spacing: 2px;
+    padding: 7px 14px 7px 11px;
+    max-width: 100%;
+    background: rgba(45,212,191,.1);
+    border-color: rgba(45,212,191,.28);
+    box-shadow: 0 0 20px rgba(45,212,191,.12);
+  }
+  .rail-right .rail-head .sec-label {
+    background: rgba(96,165,250,.1);
+    border-color: rgba(96,165,250,.28);
+    box-shadow: 0 0 20px rgba(96,165,250,.12);
+    color: var(--blue);
+  }
+  .rail-right .rail-head .sec-label::before {
+    background: var(--blue);
+    box-shadow: 0 0 10px var(--blue);
+  }
+  .rail-body {
+    flex: 1; display: flex; flex-direction: column; min-height: 0;
+    overflow-y: auto; overflow-x: hidden;
+    scrollbar-width: none;
+    scrollbar-color: transparent transparent;
+  }
+  .rail-right:hover .rail-body {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(96, 165, 250, .35) rgba(255, 255, 255, .04);
+  }
+  .rail-body::-webkit-scrollbar { width: 0; background: transparent; }
+  .rail-right:hover .rail-body::-webkit-scrollbar { width: 5px; }
+  .rail-body::-webkit-scrollbar-track { background: transparent; }
+  .rail-body::-webkit-scrollbar-thumb {
+    border-radius: 5px;
+    background: transparent;
+    transition: background .25s ease;
+  }
+  .rail-right:hover .rail-body::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(96, 165, 250, .45), rgba(45, 212, 191, .25));
+  }
+  .rail-foot {
+    flex-shrink: 0;
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid rgba(96,165,250,.12);
+    min-width: 0;
+    overflow-x: hidden;
+    box-shadow: 0 -8px 24px rgba(96,165,250,.04);
+  }
+  .rail-foot .tel-hd { color: var(--blue); text-shadow: 0 0 10px rgba(96,165,250,.3); }
+
+  @media (min-width: 1520px) {
+    .side-rail { display: flex; flex-direction: column; }
+    .frame-line { display: block; }
+    .page-main {
+      max-width: var(--content-w);
+      margin: 0 auto;
+    }
+    .bg-canvas {
+      mask-image: radial-gradient(ellipse 92% 78% at 50% 42%, #000 22%, transparent 82%);
+      -webkit-mask-image: radial-gradient(ellipse 92% 78% at 50% 42%, #000 22%, transparent 82%);
+    }
+  }
+
+  /* 左侧：架构栈 */
+  .rail-left .rail-body {
+    gap: 12px;
+    justify-content: flex-start;
+    align-content: flex-start;
+  }
+  .rail-left .rail-arch,
+  .rail-left .rail-core,
+  .rail-left .rail-kernel {
+    flex: 0 0 auto;
+    flex-shrink: 0;
+  }
+  .rail-arch {
+    display: flex; flex-direction: column; gap: 10px;
+    min-width: 0; width: 100%;
+  }
+  .arch-layer {
+    display: flex; align-items: center; gap: 12px;
+    flex-shrink: 0;
+    padding: 12px 14px; border-radius: 12px; text-decoration: none;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.06);
+    transition: border-color .2s, box-shadow .2s, background .2s;
+  }
+  .arch-layer:hover {
+    background: rgba(0,0,0,.5);
+    border-color: rgba(255,255,255,.1);
+  }
+  .arch-layer.active {
+    box-shadow: 0 0 20px rgba(45,212,191,.12), inset 0 0 16px rgba(45,212,191,.04);
+  }
+  .arch-layer.guard { border-left: 3px solid var(--cyan); }
+  .arch-layer.guard:hover, .arch-layer.guard.active { border-color: rgba(45,212,191,.3); }
+  .arch-layer.memory { border-left: 3px solid var(--purple); }
+  .arch-layer.memory:hover, .arch-layer.memory.active { border-color: rgba(196,181,253,.3); box-shadow: 0 0 20px rgba(196,181,253,.12); }
+  .arch-layer.eval { border-left: 3px solid var(--green); }
+  .arch-layer.eval:hover, .arch-layer.eval.active { border-color: rgba(74,222,128,.3); box-shadow: 0 0 20px rgba(74,222,128,.12); }
+  .arch-num {
+    width: 32px; height: 32px; border-radius: 10px; flex-shrink: 0;
+    display: grid; place-items: center;
+    font-family: var(--mono); font-size: 14px; font-weight: 900;
+  }
+  .arch-layer.guard .arch-num { background: rgba(45,212,191,.15); color: var(--cyan); }
+  .arch-layer.memory .arch-num { background: rgba(196,181,253,.15); color: var(--purple); }
+  .arch-layer.eval .arch-num { background: rgba(74,222,128,.15); color: var(--green); }
+  .arch-info { min-width: 0; }
+  .arch-name { display: block; font-size: 13px; font-weight: 700; color: #e2e8f0; }
+  .arch-desc { display: block; font-size: 9px; color: var(--muted); margin-top: 3px; line-height: 1.4; }
+
+  /* 架构与 KERNEL 之间：数据流 */
+  .rail-core {
+    display: flex; flex-direction: column; gap: 10px;
+    min-width: 0; width: 100%;
+    padding: 12px;
+    border-radius: 14px;
+    background: rgba(0,0,0,.28);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .core-pipe {
+    display: flex; flex-direction: column; align-items: stretch; gap: 0;
+  }
+  .core-step {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 0;
+  }
+  .core-step .cs-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+    background: var(--cyan); box-shadow: 0 0 8px rgba(45,212,191,.5);
+  }
+  .core-step:nth-child(3) .cs-dot { background: var(--blue); box-shadow: 0 0 8px rgba(96,165,250,.5); }
+  .core-step:nth-child(5) .cs-dot { background: var(--purple); box-shadow: 0 0 8px rgba(196,181,253,.5); }
+  .core-step:nth-child(7) .cs-dot { background: var(--green); box-shadow: 0 0 8px rgba(74,222,128,.5); }
+  .core-step .cs-text {
+    font-family: var(--mono); font-size: 9px; font-weight: 600; color: #94a3b8;
+  }
+  .core-step .cs-text em { color: var(--cyan); font-style: normal; font-weight: 700; }
+  .core-link {
+    width: 1px; height: 8px; margin-left: 3px; flex-shrink: 0;
+    background: linear-gradient(180deg, rgba(45,212,191,.4), rgba(96,165,250,.2));
+  }
+  .core-facts {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .cf-item {
+    font-family: var(--mono); font-size: 8px; font-weight: 600;
+    padding: 7px 8px; border-radius: 8px; text-align: center;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.05);
+    color: var(--muted);
+  }
+  .cf-item strong { display: block; color: #e2e8f0; font-size: 10px; font-weight: 800; margin-bottom: 2px; }
+
+  .rail-progress {
+    margin-bottom: 16px; min-width: 0;
+  }
+  .rp-track {
+    height: 4px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden;
+  }
+  .rp-fill {
+    height: 100%; width: 0%; border-radius: 4px;
+    background: var(--grad);
+    box-shadow: 0 0 10px rgba(45,212,191,.4);
+    transition: width .15s ease-out;
+  }
+  .rp-meta {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-top: 8px; gap: 8px;
+  }
+  .rp-label {
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase; color: var(--cyan);
+  }
+  .rp-pct {
+    font-family: var(--mono); font-size: 9px; font-weight: 700; color: var(--muted);
+  }
+
+  .rail-kernel {
+    padding-top: 16px; flex-shrink: 0; min-width: 0; width: 100%;
+    margin-top: 0;
+    border-top: 1px solid rgba(45,212,191,.12);
+    box-shadow: 0 -8px 24px rgba(45,212,191,.04);
+  }
+  .rail-kernel-lbl {
+    font-family: var(--mono); font-size: 9px; font-weight: 700;
+    letter-spacing: 3px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 12px;
+    text-shadow: 0 0 12px rgba(45,212,191,.35);
+  }
+  .kernel-pills { display: flex; flex-direction: column; gap: 8px; min-width: 0; width: 100%; }
+  .k-pill {
+    font-family: var(--mono); font-size: 9px; font-weight: 600; letter-spacing: .2px;
+    padding: 10px 12px; border-radius: 12px; text-decoration: none;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.08);
+    color: #94a3b8; max-width: 100%;
+    transition: color .2s, border-color .2s, background .2s, box-shadow .2s;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .k-pill .kp-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+  .k-pill .kp-val {
+    font-size: 11px; font-weight: 800; color: #e2e8f0;
+    text-shadow: 0 0 8px rgba(255,255,255,.2);
+  }
+  .k-pill .kp-bar {
+    height: 3px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden;
+  }
+  .k-pill .kp-bar span {
+    display: block; height: 100%; border-radius: 3px;
+    box-shadow: 0 0 8px currentColor;
+  }
+  .k-pill.guard .kp-bar span { background: var(--cyan); color: var(--cyan); width: 100%; }
+  .k-pill.memory .kp-bar span { background: var(--purple); color: var(--purple); width: 100%; }
+  .k-pill.eval .kp-bar span { background: var(--green); color: var(--green); width: 100%; }
+  .k-pill:hover, .k-pill.active { color: #e2e8f0; background: rgba(0,0,0,.5); }
+  .k-pill.guard:hover, .k-pill.guard.active {
+    border-color: rgba(45,212,191,.35); color: var(--cyan);
+    box-shadow: 0 0 20px rgba(45,212,191,.15), inset 0 0 16px rgba(45,212,191,.06);
+  }
+  .k-pill.memory:hover, .k-pill.memory.active {
+    border-color: rgba(196,181,253,.35); color: var(--purple);
+    box-shadow: 0 0 20px rgba(196,181,253,.15), inset 0 0 16px rgba(196,181,253,.06);
+  }
+  .k-pill.eval:hover, .k-pill.eval.active {
+    border-color: rgba(74,222,128,.35); color: var(--green);
+    box-shadow: 0 0 20px rgba(74,222,128,.15), inset 0 0 16px rgba(74,222,128,.06);
+  }
+
+  .rail-stat-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-width: 0; width: 100%; }
+  .rs-item {
+    text-align: left; padding: 10px 12px; border-radius: 12px; min-width: 0;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(255,255,255,.08);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .rs-item:hover { border-color: rgba(45,212,191,.2); box-shadow: 0 0 16px rgba(45,212,191,.08); }
+  .rs-item .rs-n {
+    font-family: var(--mono); font-size: 18px; font-weight: 900; line-height: 1;
+  }
+  .rs-item:nth-child(1) .rs-n { color: var(--green); text-shadow: 0 0 14px rgba(74,222,128,.45); }
+  .rs-item:nth-child(2) .rs-n { color: var(--cyan); text-shadow: 0 0 14px rgba(45,212,191,.45); }
+  .rs-item:nth-child(3) .rs-n { color: var(--blue); text-shadow: 0 0 14px rgba(96,165,250,.45); }
+  .rs-item:nth-child(4) .rs-n { color: var(--purple); text-shadow: 0 0 14px rgba(196,181,253,.45); }
+  .rs-item .rs-l {
+    font-size: 9px; color: var(--muted); margin-top: 4px; font-weight: 600;
+    letter-spacing: .3px; text-transform: uppercase;
+  }
+
+  /* 右侧遥测 */
+  .rail-telemetry {
+    font-family: var(--mono); font-size: 10px; line-height: 1.5;
+    display: flex; flex-direction: column; gap: 12px;
+    min-width: 0; width: 100%;
+  }
+  .tel-section {
+    flex-shrink: 0;
+    padding: 12px; border-radius: 14px;
+    background: rgba(0,0,0,.3);
+    border: 1px solid rgba(255,255,255,.06);
+  }
+  .tel-section.grow { display: flex; flex-direction: column; }
+  .tel-gates {
+    display: flex; flex-direction: column; gap: 5px; margin-top: 6px;
+  }
+  .tel-gate {
+    display: flex; align-items: center; gap: 8px;
+    flex-shrink: 0;
+    padding: 8px 10px; font-size: 10px; color: #8b9cb3;
+    border-radius: 8px;
+    background: rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.06);
+    border-left: 3px solid var(--cyan);
+    transition: box-shadow .2s, border-color .2s;
+  }
+  .tel-gate:hover { box-shadow: 0 0 16px rgba(45,212,191,.1); }
+  .tel-gate:nth-child(n+4) { border-left-color: var(--purple); }
+  .tel-gate:nth-child(6) { border-left-color: var(--green); }
+  .tel-gate .tg-n {
+    width: 20px; height: 20px; border-radius: 6px;
+    display: grid; place-items: center;
+    font-size: 9px; font-weight: 800; flex-shrink: 0;
+    background: rgba(45,212,191,.15); color: var(--cyan);
+    box-shadow: 0 0 8px rgba(45,212,191,.2);
+  }
+  .tel-gate:nth-child(n+4) .tg-n { background: rgba(196,181,253,.15); color: var(--purple); box-shadow: 0 0 8px rgba(196,181,253,.2); }
+  .tel-gate:nth-child(6) .tg-n { background: rgba(74,222,128,.15); color: var(--green); box-shadow: 0 0 8px rgba(74,222,128,.2); }
+  .tel-gate .tg-name { flex: 1; font-weight: 700; color: #cbd5e1; }
+  .tel-gate .tg-tag {
+    font-size: 8px; font-weight: 700; letter-spacing: .4px;
+    padding: 3px 7px; border-radius: 100px;
+    background: rgba(45,212,191,.1); border: 1px solid rgba(45,212,191,.2);
+    color: var(--cyan);
+  }
+  .tel-gate:nth-child(n+4) .tg-tag { background: rgba(196,181,253,.1); border-color: rgba(196,181,253,.2); color: var(--purple); }
+  .tel-gate:nth-child(6) .tg-tag { background: rgba(74,222,128,.1); border-color: rgba(74,222,128,.2); color: var(--green); }
+  .tel-hd {
+    font-size: 9px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase;
+    color: var(--cyan); margin: 0 0 8px;
+    text-shadow: 0 0 10px rgba(45,212,191,.3);
+  }
+  .tel-hd:first-child { margin-top: 0; }
+  .tel-row-wrap { margin-bottom: 6px; }
+  .tel-row-wrap:last-child { margin-bottom: 0; }
+  .tel-row {
+    display: flex; justify-content: space-between; align-items: center; gap: 4px;
+    padding: 4px 0 3px; color: #94a3b8; min-width: 0;
+  }
+  .tel-meter {
+    height: 3px; border-radius: 3px; background: rgba(255,255,255,.06); overflow: hidden;
+  }
+  .tel-meter span {
+    display: block; height: 100%; border-radius: 3px;
+    box-shadow: 0 0 6px currentColor;
+  }
+  .tel-meter.m-safe span  { background: var(--green); color: var(--green); }
+  .tel-meter.m-warn span  { background: #fbbf24; color: #fbbf24; }
+  .tel-meter.m-danger span { background: var(--red); color: var(--red); }
+  .tel-row > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tel-row .tel-val { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .tel-row b { font-weight: 900; font-size: 12px; }
+  .tel-row b.c-green { color: var(--green); }
+  .tel-row b.c-gold { color: #fbbf24; }
+  .tel-row b.c-red { color: var(--red); }
+  .tel-row .tel-tag {
+    font-size: 8px; font-weight: 700; letter-spacing: .4px;
+    padding: 2px 5px; border-radius: 100px;
+  }
+  .tel-tag.auto { background: rgba(74,222,128,.15); color: var(--green); border: 1px solid rgba(74,222,128,.25); }
+  .tel-tag.notify { background: rgba(251,191,36,.15); color: #fbbf24; border: 1px solid rgba(251,191,36,.25); }
+  .tel-tag.deny { background: rgba(248,113,113,.18); color: var(--red); border: 1px solid rgba(248,113,113,.3); box-shadow: 0 0 10px rgba(248,113,113,.15); }
+  .tel-path {
+    padding: 5px 0; color: #64748b; word-break: break-all; line-height: 1.55;
+  }
+  .tel-path em { color: #94a3b8; font-style: normal; font-weight: 600; }
+  .tel-cmd {
+    margin-top: 6px; padding: 12px 14px; border-radius: 12px;
+    background: rgba(0,0,0,.55); color: #64748b; line-height: 1.6;
+    border: 1px solid rgba(45,212,191,.15);
+    box-shadow: 0 0 24px rgba(45,212,191,.08), inset 0 0 20px rgba(0,0,0,.3);
+  }
+  .tel-cmd .c { color: var(--cyan); }
+  .tel-cmd .g { color: var(--green); }
+  .tel-links { display: flex; gap: 6px; margin-top: 12px; }
+  .tel-links a {
+    flex: 1; text-align: center; padding: 8px 4px; border-radius: 10px;
+    font-size: 9px; font-weight: 700; letter-spacing: .4px;
+    color: var(--muted); text-decoration: none;
+    background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06);
+    transition: color .2s, border-color .2s;
+  }
+  .tel-links a:hover { color: var(--cyan); border-color: rgba(45,212,191,.2); }
+
+  .tel-formula {
+    margin-top: 10px; padding: 10px 12px; border-radius: 10px;
+    background: rgba(45,212,191,.06); border: 1px solid rgba(45,212,191,.2);
+    color: var(--cyan); font-size: 9px; line-height: 1.6; word-break: break-all;
+    box-shadow: 0 0 16px rgba(45,212,191,.08);
+  }
+
+  /* 玻璃卡片 — 渐变描边 */
+  .glass {
+    position: relative;
+    background: linear-gradient(145deg, rgba(14,22,42,.88), rgba(8,12,24,.72));
+    backdrop-filter: var(--glass);
+    -webkit-backdrop-filter: var(--glass);
+    border: 1px solid transparent;
+    box-shadow: var(--shadow), inset 0 1px 0 rgba(255,255,255,.05);
+    transition: transform .4s var(--ease), box-shadow .4s var(--ease), border-color .4s;
+  }
+  .glass::before {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+    background: var(--grad-border);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude;
+    pointer-events: none; opacity: .85; transition: opacity .4s;
+  }
+  .glass::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: radial-gradient(ellipse 90% 55% at 50% -10%, rgba(255,255,255,.06), transparent 55%);
+  }
+  .glass:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow), var(--shadow-glow), inset 0 1px 0 rgba(255,255,255,.07);
+  }
+  .glass:hover::before { opacity: 1; }
+
+  .container { max-width: 100%; margin: 0 auto; padding: 0 32px; }
+
+  /* ── 品牌组件（导航 / 页脚共用） ── */
+  .brand-lockup {
+    display: flex; align-items: center; gap: 12px;
+    text-decoration: none; color: inherit;
+  }
+  .brand-lockup img {
+    height: 42px; width: auto; flex-shrink: 0;
+    border-radius: 11px; display: block;
+    filter: drop-shadow(0 4px 14px rgba(34,211,238,.22));
+    transition: filter .25s, transform .25s;
+  }
+  .brand-lockup:hover img {
+    filter: drop-shadow(0 6px 20px rgba(59,130,246,.35));
+    transform: scale(1.02);
+  }
+  nav .brand-lockup img { height: 46px; }
+  nav .brand-top { font-size: 16px; letter-spacing: 3.5px; }
+  nav .brand-bottom { font-size: 12px; letter-spacing: 4.5px; }
+
+  .brand-text {
+    display: flex; flex-direction: column; line-height: 1.05; gap: 2px;
+  }
+  .brand-top {
+    font-size: 15px; font-weight: 800; letter-spacing: 3px;
+    color: #f8fafc; text-transform: uppercase;
+  }
+  .brand-bottom {
+    font-size: 11px; font-weight: 600; letter-spacing: 4px;
+    text-transform: uppercase;
+    background: var(--grad);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* ── Nav ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 200;
+    height: var(--nav-h);
+    background: rgba(2,4,8,.72);
+    backdrop-filter: blur(24px) saturate(1.6);
+    border-bottom: 1px solid rgba(255,255,255,.06);
+    transition: background .35s, box-shadow .35s, height .35s;
+  }
+  nav::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(45,212,191,.4) 25%, rgba(196,181,253,.4) 75%, transparent);
+    pointer-events: none; opacity: .6;
+  }
+  nav.scrolled {
+    background: rgba(2,4,8,.92);
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+  }
+  .nav-inner {
+    max-width: 1200px; margin: 0 auto; padding: 0 32px;
+    height: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 24px;
+  }
+  .nav-logo {
+    flex-shrink: 0;
+    padding: 8px 18px 8px 12px; border-radius: 16px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.08);
+    transition: background .3s, border-color .3s, box-shadow .3s;
+  }
+  .nav-logo:hover {
+    background: rgba(45,212,191,.06);
+    border-color: rgba(45,212,191,.2);
+    box-shadow: 0 0 32px rgba(45,212,191,.1);
+  }
+  .nav-end {
+    display: flex; align-items: center; gap: 20px;
+    margin-left: auto; flex-shrink: 0;
+  }
+  .nav-links {
+    display: flex; align-items: center; gap: 2px; list-style: none;
+    padding: 5px; border-radius: 16px;
+    background: rgba(255,255,255,.03);
+    border: 1px solid rgba(255,255,255,.06);
+    backdrop-filter: blur(12px);
+  }
+  .nav-links a {
+    font-size: 14px; font-weight: 600; color: #94a3b8;
+    padding: 8px 16px; border-radius: 11px;
+    transition: color .25s, background .25s, box-shadow .25s;
+    letter-spacing: .2px;
+  }
+  .nav-links a:hover { color: #e2e8f0; background: rgba(255,255,255,.05); }
+  .nav-links a.active {
+    color: #fff;
+    background: linear-gradient(135deg, rgba(45,212,191,.12), rgba(96,165,250,.1));
+    box-shadow: inset 0 0 0 1px rgba(45,212,191,.18);
+  }
+  .nav-cta {
+    display: inline-flex; align-items: center; position: relative; overflow: hidden;
+    background: var(--grad); color: #fff;
+    padding: 11px 26px; border-radius: 14px;
+    font-weight: 700; font-size: 14px; letter-spacing: .3px;
+    box-shadow: 0 8px 28px rgba(96,165,250,.35), inset 0 1px 0 rgba(255,255,255,.25);
+    transition: transform .25s var(--ease), box-shadow .25s;
+    flex-shrink: 0;
+  }
+  .nav-cta::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(105deg, transparent 35%, rgba(255,255,255,.18) 50%, transparent 65%);
+    transform: translateX(-100%); transition: transform .6s;
+  }
+  .nav-cta:hover::after { transform: translateX(100%); }
+  .nav-cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 28px rgba(59,130,246,.5), inset 0 1px 0 rgba(255,255,255,.25);
+    color: #fff;
+  }
+  .menu-btn { display: none; background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: calc(100vh - var(--nav-h)); display: flex; align-items: center;
+    padding: 80px 0 100px; position: relative; overflow: hidden;
+  }
+  .hero::after {
+    content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 200px;
+    background: linear-gradient(180deg, transparent, var(--bg));
+    pointer-events: none; z-index: 0;
+  }
+  .hero-inner {
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 48px; align-items: center;
+    width: 100%; position: relative; z-index: 1;
+  }
+  .hero-text { text-align: left; }
+  .hero-kicker {
+    font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 3px;
+    text-transform: uppercase; color: var(--cyan); margin-bottom: 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .hero-kicker::before {
+    content: ''; width: 32px; height: 1px; background: var(--grad);
+  }
+  .hero h1 {
+    font-size: clamp(56px, 7vw, 96px); font-weight: 900;
+    line-height: .88; letter-spacing: -5px; margin-bottom: 32px;
+  }
+  .hero h1 .line.subtle { color: #e2e8f0; font-weight: 800; }
+  .hero-desc {
+    font-size: 19px; color: var(--muted); line-height: 1.75;
+    max-width: 500px; margin-bottom: 40px; font-weight: 400;
+  }
+  .hero-desc em {
+    font-style: normal; color: #cbd5e1; font-weight: 600;
+    border-bottom: 1px solid rgba(45,212,191,.25);
+  }
+  .hero h1 .line { display: block; }
+  .hero h1 .grad {
+    background: var(--grad-text);
+    background-size: 200% auto;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 48px rgba(96,165,250,.2));
+    animation: grad-flow 8s linear infinite;
+  }
+  .hero-proof {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 36px; max-width: 420px;
+  }
+  .hero-chip {
+    font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: .3px;
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(255,255,255,.02); border: 1px solid rgba(255,255,255,.06);
+    color: #8b9cb3;
+    display: flex; align-items: center; gap: 8px;
+    transition: border-color .3s, color .3s, transform .3s var(--ease);
+  }
+  .hero-chip::before {
+    content: ''; width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+  }
+  .hero-chip:nth-child(1)::before { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
+  .hero-chip:nth-child(2)::before { background: var(--green); box-shadow: 0 0 8px var(--green); }
+  .hero-chip:nth-child(3)::before { background: var(--purple); box-shadow: 0 0 8px var(--purple); }
+  .hero-chip:nth-child(4)::before { background: var(--blue); box-shadow: 0 0 8px var(--blue); }
+  .hero-chip:hover { border-color: rgba(45,212,191,.2); color: #e2e8f0; transform: translateY(-2px); }
+  .hero-scroll {
+    position: absolute; bottom: 32px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700; letter-spacing: 3px; text-transform: uppercase;
+    color: var(--muted); opacity: .7;
+  }
+  .hero-scroll .arrow {
+    width: 22px; height: 36px; border-radius: 12px;
+    border: 2px solid rgba(34,211,238,.3);
+    position: relative;
+  }
+  .hero-scroll .arrow::after {
+    content: ''; position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+    width: 4px; height: 8px; border-radius: 2px; background: var(--cyan);
+    animation: scroll-hint 2s ease-in-out infinite;
+  }
+  .hero-btns { display: flex; gap: 14px; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 15px 32px; border-radius: 14px;
+    font-size: 15px; font-weight: 700; letter-spacing: .2px;
+    transition: transform .3s var(--ease), box-shadow .3s, background .3s;
+    cursor: pointer; border: none; font-family: inherit; position: relative; overflow: hidden;
+  }
+  .btn:hover { transform: translateY(-3px); }
+  .btn-primary {
+    background: var(--grad); color: #fff;
+    box-shadow: 0 12px 36px rgba(96,165,250,.3), inset 0 1px 0 rgba(255,255,255,.2);
+  }
+  .btn-primary::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,.15) 50%, transparent 60%);
+    transform: translateX(-120%); transition: transform .7s;
+  }
+  .btn-primary:hover::after { transform: translateX(120%); }
+  .btn-ghost {
+    background: rgba(255,255,255,.03); color: var(--text);
+    border: 1px solid rgba(255,255,255,.1);
+    backdrop-filter: blur(8px);
+  }
+  .btn-ghost:hover {
+    border-color: rgba(45,212,191,.3);
+    background: rgba(45,212,191,.05);
+    box-shadow: 0 8px 24px rgba(0,0,0,.2);
+  }
+
+  .hero-visual {
+    position: relative; min-height: 440px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .hero-stack {
+    position: absolute; inset: 0; pointer-events: none;
+  }
+  .stack-layer {
+    position: absolute; padding: 12px 20px; border-radius: 14px;
+    font-family: var(--mono); font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; white-space: nowrap;
+    background: rgba(8,12,24,.85); border: 1px solid rgba(255,255,255,.1);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 12px 32px rgba(0,0,0,.3);
+    animation: layer-float 5s ease-in-out infinite;
+  }
+  .stack-layer.sl1 { top: 8%; left: 0; color: var(--cyan); border-color: rgba(45,212,191,.25); animation-delay: 0s; }
+  .stack-layer.sl2 { top: 18%; right: -4%; color: var(--purple); border-color: rgba(196,181,253,.25); animation-delay: -1.5s; }
+  .stack-layer.sl3 { bottom: 12%; left: 4%; color: var(--green); border-color: rgba(74,222,128,.25); animation-delay: -3s; }
+  @keyframes layer-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .hero-logo-wrap {
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 2;
+  }
+  .hero-orbit {
+    position: absolute; border-radius: 50%; pointer-events: none;
+    border: 1px solid rgba(45,212,191,.1);
+  }
+  .hero-orbit.o1 { width: 320px; height: 320px; opacity: .7; animation: orbit-spin 28s linear infinite; }
+  .hero-orbit.o2 { width: 380px; height: 380px; opacity: .5; border-color: rgba(196,181,253,.08); animation: orbit-spin 36s linear infinite reverse; }
+  .hero-orbit.o1::before, .hero-orbit.o2::before {
+    content: ''; position: absolute; top: -3px; left: 50%; transform: translateX(-50%);
+    width: 6px; height: 6px; border-radius: 50%;
+  }
+  .hero-orbit.o1::before { background: var(--cyan); box-shadow: 0 0 14px var(--cyan); }
+  .hero-orbit.o2::before { background: var(--purple); box-shadow: 0 0 14px var(--purple); top: auto; bottom: -3px; }
+  @keyframes orbit-spin { to { transform: rotate(360deg); } }
+  .hero-logo-glow {
+    position: absolute; width: 420px; height: 420px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(45,212,191,.15), rgba(196,181,253,.06), transparent 68%);
+    filter: blur(60px); pointer-events: none;
+  }
+  .hero-logo-card {
+    position: relative; z-index: 2;
+    padding: 48px 52px; border-radius: 36px;
+    overflow: hidden; animation: logo-float 6s ease-in-out infinite;
+  }
+  .hero-logo {
+    width: min(100%, 260px); height: auto; display: block;
+    filter: drop-shadow(0 12px 32px rgba(0,0,0,.4));
+  }
+  .hero-logo-card.glass > .hero-logo { position: relative; z-index: 1; }
+  .hero-visual:hover .hero-logo-card {
+    animation-play-state: paused;
+    transform: translateY(-8px) scale(1.02);
+  }
+
+  /* ── Section ── */
+  section { padding: 120px 0; position: relative; }
+  section::before {
+    content: ''; position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+    width: min(600px, 80%); height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(34,211,238,.2), rgba(139,92,246,.2), transparent);
+    pointer-events: none;
+  }
+  section.hero::before, .stats-banner::before { display: none; }
+  .sec-hd.center { text-align: center; }
+  .sec-hd.center .sec-sub { margin-left: auto; margin-right: auto; }
+  .sec-hd.center .sec-label { justify-content: center; }
+  .sec-band {
+    background:
+      linear-gradient(180deg, rgba(45,212,191,.025) 0%, transparent 35%),
+      linear-gradient(0deg, rgba(196,181,253,.02) 0%, transparent 30%);
+  }
+  .sec-hd { margin-bottom: 72px; }
+  .sec-label {
+    display: inline-flex; align-items: center; gap: 10px;
+    font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 2px; text-transform: uppercase;
+    color: var(--cyan); margin-bottom: 20px;
+    padding: 8px 16px 8px 12px; border-radius: 100px;
+    background: rgba(45,212,191,.06); border: 1px solid rgba(45,212,191,.15);
+  }
+  .sec-label::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+    background: var(--cyan); box-shadow: 0 0 10px var(--cyan); flex-shrink: 0;
+  }
+  .sec-hd:not(.center) .sec-label { padding-left: 16px; }
+  .sec-hd:not(.center) .sec-label::before { display: none; }
+  .sec-hd:not(.center) .sec-label { border-left: 2px solid var(--cyan); border-radius: 0 100px 100px 0; }
+  .sec-title {
+    font-size: clamp(36px, 4.5vw, 56px); font-weight: 900;
+    letter-spacing: -2.5px; margin-bottom: 20px; line-height: 1.02;
+  }
+  .sec-title .hl {
+    background: var(--grad-text); background-size: 200% auto;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .sec-sub { font-size: 17px; color: var(--muted); max-width: 560px; line-height: 1.75; font-weight: 400; }
+
+  .reveal { opacity: 0; transform: translateY(32px); transition: opacity .75s cubic-bezier(.2,.8,.2,1), transform .75s cubic-bezier(.2,.8,.2,1); }
+  .reveal.visible { opacity: 1; transform: none; }
+  .reveal:nth-child(2) { transition-delay: .08s; }
+  .reveal:nth-child(3) { transition-delay: .16s; }
+
+  /* ── 痛点 Bento ── */
+  .pain-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; }
+  .pain {
+    grid-column: span 3;
+    display: flex; flex-direction: column; gap: 16px;
+    padding: 28px 28px 26px; border-radius: var(--radius);
+    position: relative; overflow: hidden;
+  }
+  .pain.pain-wide { grid-column: span 6; max-width: none; flex-direction: row; align-items: center; gap: 24px; }
+  .pain.pain-wide .pain-body { flex: 1; }
+  .pain.pain-wide .pain-sol-wrap { flex-shrink: 0; text-align: right; }
+  .pain .pain-idx {
+    font-family: var(--mono); font-size: 11px; font-weight: 700;
+    color: var(--cyan); letter-spacing: 2px; opacity: .7;
+  }
+  .pain .pain-idx-big {
+    position: absolute; top: -8px; right: 16px;
+    font-family: var(--mono); font-size: 72px; font-weight: 800; line-height: 1;
+    color: rgba(255,255,255,.03); pointer-events: none; letter-spacing: -4px;
+  }
+  .pain.glass::after {
+    content: ''; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px;
+    background: linear-gradient(180deg, var(--red), #fb923c);
+    border-radius: 0 3px 3px 0; pointer-events: none;
+    inset: auto; width: 3px;
+  }
+  .pain-prob { font-size: 15px; color: var(--muted); font-weight: 500; line-height: 1.5; }
+  .pain-prob strong { display: block; color: var(--text); font-size: 20px; font-weight: 800; margin-bottom: 6px; letter-spacing: -.3px; }
+  .pain-arrow { display: none; }
+  .pain-sol { font-size: 16px; font-weight: 700; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.06); }
+  .pain.pain-wide .pain-sol { border-top: none; padding-top: 0; }
+  .pain-sol .c { color: var(--cyan); }
+  .pain-sol .p { color: var(--purple); }
+  .pain-sol .g { color: var(--green); }
+
+  /* ── Guard Pipeline Bento ── */
+  .pipeline {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px;
+    position: relative; padding-left: 0;
+  }
+  .pipeline::before { display: none; }
+  .pipe-step {
+    display: grid; grid-template-columns: 52px 1fr auto; gap: 18px; align-items: start;
+    padding: 24px 26px; border-radius: var(--radius);
+    position: relative; z-index: 1;
+  }
+  .pipe-step + .pipe-step { margin-top: 0; }
+  .pipe-step:hover { transform: translateY(-4px); }
+  .pipe-num {
+    width: 58px; height: 58px; border-radius: 50%;
+    display: grid; place-items: center; font-family: var(--mono);
+    font-size: 17px; font-weight: 700; border: 2px solid; flex-shrink: 0;
+    position: relative;
+  }
+  .pipe-num::after {
+    content: ''; position: absolute; inset: -4px; border-radius: 50%;
+    border: 1px solid currentColor; opacity: .15;
+  }
+  .pipe-body h3 { font-size: 22px; font-weight: 800; margin-bottom: 4px; }
+  .pipe-body p { font-size: 15px; color: var(--muted); font-weight: 500; line-height: 1.45; }
+  .pipe-tag {
+    font-size: 13px; font-weight: 800; letter-spacing: 1px;
+    padding: 8px 14px; border-radius: 10px; white-space: nowrap;
+  }
+  .pipe-step:nth-child(1) .pipe-num { color: var(--cyan); border-color: var(--cyan); box-shadow: 0 0 20px rgba(34,211,238,.25); background: rgba(34,211,238,.08); }
+  .pipe-step:nth-child(1) h3 { color: var(--cyan); }
+  .pipe-step:nth-child(1) .pipe-tag { color: var(--cyan); background: rgba(34,211,238,.1); border: 1px solid rgba(34,211,238,.2); }
+  .pipe-step:nth-child(2) .pipe-num { color: var(--blue); border-color: var(--blue); box-shadow: 0 0 20px rgba(59,130,246,.25); background: rgba(59,130,246,.08); }
+  .pipe-step:nth-child(2) h3 { color: #60a5fa; }
+  .pipe-step:nth-child(2) .pipe-tag { color: #60a5fa; background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.2); }
+  .pipe-step:nth-child(3) .pipe-num { color: #818cf8; border-color: #818cf8; box-shadow: 0 0 20px rgba(129,140,248,.25); background: rgba(129,140,248,.08); }
+  .pipe-step:nth-child(3) h3 { color: #818cf8; }
+  .pipe-step:nth-child(3) .pipe-tag { color: #818cf8; background: rgba(129,140,248,.1); border: 1px solid rgba(129,140,248,.2); }
+  .pipe-step:nth-child(4) .pipe-num { color: var(--purple); border-color: var(--purple); box-shadow: 0 0 20px rgba(167,139,250,.25); background: rgba(167,139,250,.08); }
+  .pipe-step:nth-child(4) h3 { color: var(--purple); }
+  .pipe-step:nth-child(4) .pipe-tag { color: var(--purple); background: rgba(167,139,250,.1); border: 1px solid rgba(167,139,250,.2); }
+  .pipe-step:nth-child(5) .pipe-num { color: #c084fc; border-color: #c084fc; box-shadow: 0 0 20px rgba(192,132,252,.25); background: rgba(192,132,252,.08); }
+  .pipe-step:nth-child(5) h3 { color: #c084fc; }
+  .pipe-step:nth-child(5) .pipe-tag { color: #c084fc; background: rgba(192,132,252,.1); border: 1px solid rgba(192,132,252,.2); }
+  .pipe-step:nth-child(6) .pipe-num { color: var(--green); border-color: var(--green); box-shadow: 0 0 20px rgba(52,211,153,.25); background: rgba(52,211,153,.08); }
+  .pipe-step:nth-child(6) h3 { color: var(--green); }
+  .pipe-step:nth-child(6) .pipe-tag { color: var(--green); background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.2); }
+
+  /* ── Memory ── */
+  .memory-stack { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: center; }
+  .mem-card:nth-child(2) { transform: translateY(-12px); }
+  .mem-card:nth-child(2):hover { transform: translateY(-20px); }
+  .mem-card {
+    border-radius: var(--radius); padding: 36px 28px; text-align: center;
+    position: relative; overflow: hidden;
+  }
+  .mem-card:hover { transform: translateY(-8px); }
+  .mem-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+  .mem-card:nth-child(1)::before { background: linear-gradient(90deg, var(--cyan), var(--blue)); }
+  .mem-card:nth-child(2)::before { background: linear-gradient(90deg, var(--blue), var(--purple)); }
+  .mem-card:nth-child(3)::before { background: linear-gradient(90deg, var(--purple), var(--green)); }
+  .mem-card:nth-child(1):hover { box-shadow: 0 12px 40px rgba(34,211,238,.12); }
+  .mem-card:nth-child(2):hover { box-shadow: 0 12px 40px rgba(59,130,246,.12); }
+  .mem-card:nth-child(3):hover { box-shadow: 0 12px 40px rgba(167,139,250,.12); }
+  .mem-num {
+    font-size: 56px; font-weight: 900; line-height: 1; margin-bottom: 8px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .mem-card:nth-child(1) .mem-num { color: var(--cyan); text-shadow: 0 0 30px rgba(34,211,238,.3); }
+  .mem-card:nth-child(2) .mem-num { color: #60a5fa; text-shadow: 0 0 30px rgba(96,165,250,.3); }
+  .mem-card:nth-child(3) .mem-num { color: var(--purple); text-shadow: 0 0 30px rgba(167,139,250,.3); }
+  .mem-card h3 { font-size: 20px; font-weight: 800; margin-bottom: 4px; }
+  .mem-en { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 12px; }
+  .mem-card p { font-size: 14px; color: var(--muted); line-height: 1.55; font-weight: 500; }
+
+  /* ── Eval ── */
+  .eval-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; position: relative; }
+  .eval-row::before {
+    content: ''; position: absolute; top: 36px; left: 15%; right: 15%; height: 2px;
+    background: linear-gradient(90deg, var(--cyan), var(--blue), var(--purple));
+    opacity: .3; z-index: 0;
+  }
+  .eval-card {
+    border-radius: var(--radius); padding: 32px 28px; position: relative; z-index: 1;
+  }
+  .eval-phase {
+    display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: 2px;
+    color: var(--cyan); background: rgba(34,211,238,.1);
+    border: 1px solid rgba(34,211,238,.2); border-radius: 8px;
+    padding: 4px 10px; margin-bottom: 12px;
+  }
+  .eval-card h3 { font-size: 20px; font-weight: 800; margin-bottom: 8px; }
+  .eval-card p { font-size: 14px; color: var(--muted); line-height: 1.55; font-weight: 500; }
+
+  /* ── Stats Banner ── */
+  .stats-banner { padding: 80px 0; position: relative; border: none; background: none; }
+  .stats-strip {
+    display: flex; align-items: stretch; justify-content: space-between;
+    padding: 6px; border-radius: calc(var(--radius) + 6px); gap: 0;
+  }
+  .stat-card + .stat-card { border-left: 1px solid rgba(255,255,255,.05); }
+  .stat-card::before { display: none; }
+  .stat-card {
+    flex: 1; padding: 32px 10px; border-radius: calc(var(--radius) - 4px);
+    position: relative; overflow: hidden; text-align: center; min-width: 0;
+    background: transparent; transition: background .3s;
+  }
+  .stat-card:hover { background: rgba(255,255,255,.02); transform: none; }
+  .stat-num {
+    font-size: clamp(38px, 4vw, 54px); font-weight: 800; font-family: var(--mono); line-height: 1;
+  }
+  .stat-lbl { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 10px; letter-spacing: .3px; }
+  .stat-num.n1 { color: var(--gold); text-shadow: 0 0 35px rgba(252,211,77,.3); }
+  .stat-num.n2 { color: var(--green); text-shadow: 0 0 35px rgba(74,222,128,.3); }
+  .stat-num.n3 { color: var(--cyan); text-shadow: 0 0 35px rgba(45,212,191,.3); }
+  .stat-num.n4 { color: var(--purple); text-shadow: 0 0 35px rgba(196,181,253,.3); }
+
+  /* ── Install（重点） ── */
+  #install {
+    padding: 140px 0 120px;
+    background:
+      radial-gradient(ellipse 70% 50% at 50% 100%, rgba(96,165,250,.1), transparent 60%),
+      radial-gradient(ellipse 40% 30% at 20% 80%, rgba(45,212,191,.05), transparent 50%);
+  }
+  .install-wrap { max-width: 1040px; margin: 0 auto; text-align: center; }
+  .install-terminal {
+    margin-top: 48px; text-align: left;
+    background: rgba(4,8,16,.75); border: 1px solid rgba(255,255,255,.08);
+    border-radius: 20px; overflow: hidden;
+    backdrop-filter: blur(16px);
+    box-shadow: var(--shadow), 0 0 80px rgba(45,212,191,.05);
+    transition: transform .35s var(--ease), box-shadow .35s;
+  }
+  .install-terminal:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow), 0 0 60px rgba(96,165,250,.08);
+  }
+  .term-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 20px; border-bottom: 1px solid var(--border);
+    background: rgba(255,255,255,.02);
+  }
+  .term-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .term-dot.r { background: #ef4444; }
+  .term-dot.y { background: #fbbf24; }
+  .term-dot.g { background: #34d399; }
+  .term-title { font-family: 'JetBrains Mono', monospace; font-size: 13px; color: var(--muted); margin-left: 8px; }
+  .term-body { padding: 28px 28px 32px; font-family: 'JetBrains Mono', monospace; font-size: 15px; line-height: 2; }
+  .term-line { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .term-prompt { color: var(--green); font-weight: 700; user-select: none; }
+  .term-cmd { color: var(--text); font-weight: 600; }
+  .term-comment { color: var(--muted); }
+  .term-highlight { color: var(--cyan); }
+
+  .install-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 32px; }
+  .copy-btn {
+    position: relative; overflow: hidden;
+    background: var(--grad); color: #fff; border: none;
+    padding: 16px 40px; border-radius: 14px;
+    font-size: 16px; font-weight: 700; font-family: inherit; letter-spacing: .2px;
+    cursor: pointer; box-shadow: 0 12px 36px rgba(96,165,250,.3);
+    transition: transform .3s var(--ease);
+  }
+  .copy-btn::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,.2) 50%, transparent 60%);
+    background-size: 200% 100%; animation: shimmer 3s ease-in-out infinite;
+  }
+  .copy-btn:hover { transform: translateY(-2px); }
+  .copy-btn.copied { background: linear-gradient(135deg, var(--green), #059669); }
+  .install-links { display: flex; justify-content: center; gap: 28px; margin-top: 24px; }
+  .install-links a {
+    font-size: 15px; font-weight: 700; color: var(--muted);
+    transition: color .2s;
+  }
+  .install-links a:hover { color: var(--cyan); }
+  .install-tags { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 20px; }
+  .install-tag {
+    font-size: 14px; font-weight: 600; color: var(--muted);
+    padding: 8px 16px; border-radius: 10px;
+    border: 1px solid var(--border); background: rgba(255,255,255,.02);
+  }
+
+  /* ── Footer ── */
+  footer {
+    padding: 64px 0 52px; text-align: center;
+    border-top: 1px solid rgba(255,255,255,.06);
+    background: linear-gradient(180deg, transparent, rgba(2,4,8,.8));
+  }
+  footer p { color: var(--muted); font-size: 13px; font-weight: 500; letter-spacing: .3px; }
+
+  .nav-cta-mobile { display: none; }
+
+  footer .foot-brand { margin-bottom: 14px; justify-content: center; }
+  footer .foot-brand .brand-top { font-size: 16px; }
+  footer .foot-brand .brand-bottom { font-size: 12px; }
+  footer .foot-brand img { height: 48px; }
+
+  /* ── Demo / 亮点 ── */
+  .demo-band {
+    padding: 0;
+    border: none;
+    background: none;
+  }
+  .demo-grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: stretch; }
+  .risk-panel {
+    padding: 32px; border-radius: 24px; height: 100%;
+  }
+  .risk-panel h3 { font-size: 22px; font-weight: 900; margin-bottom: 6px; }
+  .risk-panel .sub { font-size: 14px; color: var(--muted); margin-bottom: 22px; font-weight: 600; }
+  .risk-formula {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    padding: 16px 18px; border-radius: var(--radius-sm); margin-bottom: 22px;
+    background: rgba(0,0,0,.35); border: 1px solid rgba(45,212,191,.12);
+    color: var(--cyan); letter-spacing: .2px; line-height: 1.6;
+  }
+  .risk-cards { display: flex; flex-direction: column; gap: 10px; }
+  .risk-item {
+    display: grid; grid-template-columns: 1fr auto auto; gap: 14px; align-items: center;
+    padding: 15px 18px; border-radius: 14px;
+    background: rgba(0,0,0,.2); border: 1px solid rgba(255,255,255,.05);
+    transition: border-color .25s, background .25s;
+  }
+  .risk-item:hover { border-color: rgba(34,211,238,.15); background: rgba(0,0,0,.3); }
+  .risk-item .tool { font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--text); }
+  .risk-item .score {
+    font-family: var(--mono); font-size: 20px; font-weight: 900; min-width: 52px; text-align: right;
+  }
+  .risk-item .action {
+    font-size: 12px; font-weight: 800; letter-spacing: 1px; padding: 6px 12px; border-radius: 8px;
+    min-width: 56px; text-align: center;
+  }
+  .risk-item.safe .score { color: var(--green); }
+  .risk-item.safe .action { background: rgba(34,197,94,.15); color: var(--green); }
+  .risk-item.mid .score { color: #fbbf24; }
+  .risk-item.mid .action { background: rgba(251,191,36,.12); color: #fbbf24; }
+  .risk-item.warn .score { color: #fb923c; }
+  .risk-item.warn .action { background: rgba(251,146,60,.12); color: #fb923c; }
+  .risk-item.danger .score { color: var(--red); }
+  .risk-item.danger .action { background: rgba(239,68,68,.15); color: var(--red); }
+  .risk-bar-wrap { margin-top: 18px; }
+  .risk-bar-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); font-weight: 700; margin-bottom: 8px; }
+  .risk-bar {
+    height: 8px; border-radius: 4px; background: rgba(255,255,255,.06); overflow: hidden;
+    display: flex;
+  }
+  .risk-bar span { height: 100%; }
+  .risk-bar .b-safe { width: 20%; background: var(--green); }
+  .risk-bar .b-mid { width: 25%; background: #fbbf24; }
+  .risk-bar .b-warn { width: 25%; background: #fb923c; }
+  .risk-bar .b-deny { width: 30%; background: var(--red); }
+
+  .verify-panel {
+    padding: 32px; border-radius: 24px; height: 100%;
+    background: linear-gradient(145deg, rgba(239,68,68,.05), rgba(10,16,32,.8) 40%, rgba(168,85,247,.05));
+    border: 1px solid rgba(239,68,68,.18);
+    position: relative; overflow: hidden;
+    backdrop-filter: var(--glass);
+  }
+  .verify-panel::before {
+    content: 'ANTI-HALLUCINATION'; position: absolute; top: 16px; right: -28px;
+    transform: rotate(35deg); font-size: 10px; font-weight: 900; letter-spacing: 2px;
+    padding: 4px 40px; background: rgba(239,68,68,.2); color: var(--red);
+  }
+  .verify-panel h3 { font-size: 22px; font-weight: 900; margin-bottom: 6px; }
+  .verify-panel .sub { font-size: 14px; color: var(--muted); margin-bottom: 20px; font-weight: 600; }
+  .verify-vs { display: flex; flex-direction: column; gap: 12px; }
+  .verify-box {
+    padding: 16px 18px; border-radius: 14px; font-size: 15px; line-height: 1.55; font-weight: 600;
+  }
+  .verify-box.agent {
+    background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25);
+    color: #fca5a5;
+  }
+  .verify-box.agent .lbl { font-size: 11px; font-weight: 900; letter-spacing: 1.5px; color: var(--red); margin-bottom: 6px; }
+  .verify-box.real {
+    background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.25);
+    color: #86efac;
+  }
+  .verify-box.real .lbl { font-size: 11px; font-weight: 900; letter-spacing: 1.5px; color: var(--green); margin-bottom: 6px; }
+  .verify-box code { font-family: var(--mono); font-size: 13px; }
+  .verify-result {
+    margin-top: 16px; padding: 14px 18px; border-radius: 12px;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(239,68,68,.3);
+    font-family: var(--mono); font-size: 14px; font-weight: 700; color: var(--red);
+  }
+  .verify-result strong { color: #fff; }
+
+  .pain-wide { grid-column: 1 / -1; }
+
+  /* ── Philosophy ── */
+  .philosophy-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  .phil-card {
+    padding: 32px 28px; border-radius: var(--radius);
+    text-align: center;
+  }
+  .phil-card:hover { transform: translateY(-6px); }
+  .phil-card .icon {
+    width: 56px; height: 56px; margin: 0 auto 16px; border-radius: 16px;
+    display: grid; place-items: center; font-size: 26px;
+    background: linear-gradient(135deg, rgba(45,212,191,.1), rgba(196,181,253,.08));
+    border: 1px solid rgba(255,255,255,.08);
+  }
+  .phil-card h3 { font-size: 20px; font-weight: 900; margin-bottom: 8px; }
+  .phil-card p { font-size: 15px; color: var(--muted); font-weight: 600; line-height: 1.6; }
+  .phil-card .anti { margin-top: 12px; font-size: 13px; color: var(--red); font-weight: 700; opacity: .85; }
+
+  /* ── Feedback signals ── */
+  .feedback-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  }
+  .fb-chip {
+    padding: 20px 14px; border-radius: 16px; text-align: center;
+    transition: border-color .25s, transform .25s, box-shadow .25s;
+  }
+  .fb-chip:hover {
+    border-color: rgba(168,85,247,.35); transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(0,0,0,.25);
+  }
+  .fb-chip .emoji { font-size: 22px; margin-bottom: 6px; }
+  .fb-chip .name { font-family: var(--mono); font-size: 11px; font-weight: 700; color: var(--purple); letter-spacing: .5px; }
+  .fb-chip .desc { font-size: 13px; color: var(--muted); margin-top: 4px; font-weight: 600; }
+  .fb-chip.pos { border-color: rgba(34,197,94,.2); }
+  .fb-chip.neg { border-color: rgba(239,68,68,.2); }
+
+  /* ── Integrate ── */
+  .integrate-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+  .int-card {
+    padding: 32px 28px; border-radius: var(--radius);
+    display: flex; flex-direction: column; gap: 14px;
+    position: relative; overflow: hidden;
+  }
+  .int-card:hover { transform: translateY(-6px); }
+  .int-card::after {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--grad);
+  }
+  .int-card .mode { font-size: 11px; font-weight: 900; letter-spacing: 2px; color: var(--cyan); }
+  .int-card h3 { font-size: 22px; font-weight: 900; }
+  .int-card p { font-size: 15px; color: var(--muted); font-weight: 600; line-height: 1.55; flex: 1; }
+  .int-code {
+    font-family: var(--mono); font-size: 12px; font-weight: 600;
+    padding: 12px 14px; border-radius: 10px;
+    background: rgba(0,0,0,.4); border: 1px solid rgba(34,211,238,.12);
+    color: #94a3b8; word-break: break-all;
+  }
+  .int-code .hl { color: var(--cyan); }
+  .int-tag {
+    display: inline-block; font-size: 11px; font-weight: 800; letter-spacing: 1px;
+    padding: 5px 10px; border-radius: 6px;
+    background: rgba(168,85,247,.12); color: var(--purple); align-self: flex-start;
+  }
+  .int-tag.plug {
+    background: rgba(45,212,191,.12); color: var(--cyan);
+  }
+
+  .stats-grid .stat-num.n5 {
+    background: linear-gradient(135deg, #fbbf24, #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .stats-grid .stat-num.n6 {
+    background: linear-gradient(135deg, #a855f7, #ec4899);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    font-size: clamp(28px, 4vw, 44px);
+  }
+
+  .install-dual { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 12px; }
+  .install-dual .install-terminal { margin: 0; }
+  .install-note {
+    margin-top: 20px; padding: 16px 20px; border-radius: 14px;
+    background: rgba(168,85,247,.06); border: 1px solid rgba(168,85,247,.2);
+    font-size: 14px; color: var(--muted); font-weight: 600; text-align: center;
+  }
+  .install-note strong { color: var(--purple); }
+
+  /* ── Responsive ── */
+  @media (max-width: 900px) {
+    .nav-inner { padding: 0 20px; }
+    .container { padding: 0 20px; }
+    section { padding: 88px 0; }
+    .hero-inner { grid-template-columns: 1fr; gap: 40px; }
+    .hero-text { text-align: center; }
+    .hero-desc { margin-left: auto; margin-right: auto; }
+    .hero-btns { justify-content: center; }
+    .hero-scroll { display: none; }
+    .hero-visual { order: -1; min-height: 360px; }
+    .hero-logo { width: 200px; }
+    .hero-proof { max-width: 100%; }
+    .stack-layer { display: none; }
+    .pipeline { grid-template-columns: 1fr; }
+    .pain-grid { grid-template-columns: 1fr; }
+    .pain, .pain.pain-wide { grid-column: span 1; flex-direction: column; }
+    .pain.pain-wide .pain-sol-wrap { text-align: left; }
+    .stats-strip { flex-wrap: wrap; padding: 6px; }
+    .stat-card { flex: 1 1 45%; }
+    .pain-grid, .memory-stack, .eval-row,
+    .demo-grid, .philosophy-grid, .feedback-grid, .integrate-grid, .install-dual { grid-template-columns: 1fr; }
+    .eval-row::before { display: none; }
+    .nav-end .nav-cta { display: none; }
+    .nav-cta-mobile { display: list-item; }
+    .nav-links {
+      display: none; position: fixed; top: var(--nav-h); left: 0; right: 0;
+      flex-direction: column; gap: 0; background: rgba(2,4,8,.97);
+      border-bottom: 1px solid rgba(255,255,255,.06); padding: 12px 16px;
+      box-shadow: 0 16px 40px rgba(0,0,0,.5);
+      border-radius: 0; backdrop-filter: blur(20px);
+    }
+    .nav-links.open { display: flex; }
+    .nav-links li { width: 100%; }
+    .nav-links a { display: block; padding: 14px 28px; border-radius: 0; }
+    .nav-cta-mobile .nav-cta { margin: 10px 20px; border-radius: 12px; text-align: center; display: block; }
+    .menu-btn { display: block; }
+    .mem-card:nth-child(2) { transform: none; }
+    .mem-card:nth-child(2):hover { transform: translateY(-8px); }
+    .pipe-step { grid-template-columns: 48px 1fr; }
+    .pipe-tag { grid-column: 1 / -1; justify-self: start; margin-top: 4px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg-aurora"></div>
+<canvas class="bg-canvas" id="bgCanvas" aria-hidden="true"></canvas>
+<div class="bg-noise"></div>
+<div class="bg-orb a"></div>
+<div class="bg-orb b"></div>
+<div class="bg-orb c"></div>
+<div class="bg-orb d"></div>
+
+<div class="frame-line frame-left" aria-hidden="true"></div>
+<div class="frame-line frame-right" aria-hidden="true"></div>
+
+<div class="wrap">
+
+<!-- 左侧：架构概览 -->
+<aside class="side-rail rail-left" aria-label="系统架构">
+  <div class="rail-fill">
+    <div class="rail-head"><span class="sec-label">Architecture</span></div>
+    <div class="rail-body">
+      <div class="rail-arch">
+        <a href="#guard" class="arch-layer guard" data-rail="guard">
+          <span class="arch-num">G</span>
+          <span class="arch-info">
+            <span class="arch-name">Guard Layer</span>
+            <span class="arch-desc">6 Gate · 零 LLM 确定性</span>
+          </span>
+        </a>
+        <a href="#memory" class="arch-layer memory" data-rail="memory">
+          <span class="arch-num">M</span>
+          <span class="arch-info">
+            <span class="arch-name">Memory Layer</span>
+            <span class="arch-desc">3 层人脑记忆模型</span>
+          </span>
+        </a>
+        <a href="#eval" class="arch-layer eval" data-rail="eval">
+          <span class="arch-num">E</span>
+          <span class="arch-info">
+            <span class="arch-name">Evaluator</span>
+            <span class="arch-desc">3 Phase · 隐性反馈</span>
+          </span>
+        </a>
+      </div>
+      <div class="rail-core">
+        <div class="core-pipe">
+          <div class="core-step"><span class="cs-dot"></span><span class="cs-text"><em>execute()</em> → 6 Gate 流水线</span></div>
+          <div class="core-link"></div>
+          <div class="core-step"><span class="cs-dot"></span><span class="cs-text">写入 <em>audit.jsonl</em></span></div>
+          <div class="core-link"></div>
+          <div class="core-step"><span class="cs-dot"></span><span class="cs-text">Memory 压缩 &amp; 评级</span></div>
+          <div class="core-link"></div>
+          <div class="core-step"><span class="cs-dot"></span><span class="cs-text"><em>feedback</em> 隐性信号</span></div>
+        </div>
+        <div class="core-facts">
+          <div class="cf-item"><strong>&lt;1ms</strong>校验延迟</div>
+          <div class="cf-item"><strong>Plugin</strong>OpenClaw</div>
+          <div class="cf-item"><strong>MIT</strong>开源协议</div>
+          <div class="cf-item"><strong>Node</strong>≥ 18</div>
+        </div>
+      </div>
+      <div class="rail-kernel">
+        <div class="rail-kernel-lbl">KERNEL</div>
+        <div class="kernel-pills">
+          <a href="#guard" class="k-pill guard" data-rail="guard">
+            <span class="kp-top"><span>6 Gates</span><span class="kp-val">6</span></span>
+            <span class="kp-bar"><span></span></span>
+          </a>
+          <a href="#memory" class="k-pill memory" data-rail="memory">
+            <span class="kp-top"><span>3 Layers</span><span class="kp-val">3</span></span>
+            <span class="kp-bar"><span></span></span>
+          </a>
+          <a href="#eval" class="k-pill eval" data-rail="eval">
+            <span class="kp-top"><span>3 Phases</span><span class="kp-val">3</span></span>
+            <span class="kp-bar"><span></span></span>
+          </a>
+        </div>
+      </div>
+    </div>
+    <div class="rail-foot">
+      <div class="rail-progress">
+        <div class="rp-track"><div class="rp-fill" id="scrollProgress"></div></div>
+        <div class="rp-meta">
+          <span class="rp-label" id="scrollSection">Hero</span>
+          <span class="rp-pct" id="scrollPct">0%</span>
+        </div>
+      </div>
+      <div class="rail-stat-mini">
+        <div class="rs-item"><div class="rs-n">99</div><div class="rs-l">Tests</div></div>
+        <div class="rs-item"><div class="rs-n">12</div><div class="rs-l">Schemas</div></div>
+        <div class="rs-item"><div class="rs-n">12</div><div class="rs-l">Signals</div></div>
+        <div class="rs-item"><div class="rs-n">0</div><div class="rs-l">LLM</div></div>
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- 右侧：全高遥测 -->
+<aside class="side-rail rail-right" aria-label="系统状态">
+  <div class="rail-fill">
+    <div class="rail-head"><span class="sec-label">Telemetry</span></div>
+    <div class="rail-body">
+      <div class="rail-telemetry">
+        <div class="tel-section">
+          <div class="tel-hd">Risk Gate</div>
+          <div class="tel-row-wrap">
+            <div class="tel-row"><span>write_file</span><span class="tel-val"><b class="c-green">0.19</b><span class="tel-tag auto">auto</span></span></div>
+            <div class="tel-meter m-safe"><span style="width:1.9%"></span></div>
+          </div>
+          <div class="tel-row-wrap">
+            <div class="tel-row"><span>git_push</span><span class="tel-val"><b class="c-gold">0.94</b><span class="tel-tag notify">notify</span></span></div>
+            <div class="tel-meter m-warn"><span style="width:9.4%"></span></div>
+          </div>
+          <div class="tel-row-wrap">
+            <div class="tel-row"><span>delete_dir</span><span class="tel-val"><b class="c-gold">3.11</b><span class="tel-tag notify">notify</span></span></div>
+            <div class="tel-meter m-warn"><span style="width:31.1%"></span></div>
+          </div>
+          <div class="tel-row-wrap">
+            <div class="tel-row"><span>shell_rm_rf</span><span class="tel-val"><b class="c-red">9.18</b><span class="tel-tag deny">deny</span></span></div>
+            <div class="tel-meter m-danger"><span style="width:91.8%"></span></div>
+          </div>
+          <div class="tel-formula">Risk = Impact × (1−Rev) × Sens × (1+Err)</div>
+        </div>
+        <div class="tel-section grow">
+          <div class="tel-hd">Pipeline</div>
+          <div class="tel-gates">
+            <div class="tel-gate"><span class="tg-n">01</span><span class="tg-name">Schema</span><span class="tg-tag">PRE</span></div>
+            <div class="tel-gate"><span class="tg-n">02</span><span class="tg-name">Risk</span><span class="tg-tag">PRE</span></div>
+            <div class="tel-gate"><span class="tg-n">03</span><span class="tg-name">Snapshot</span><span class="tg-tag">PRE</span></div>
+            <div class="tel-gate"><span class="tg-n">04</span><span class="tg-name">Verify</span><span class="tg-tag">POST</span></div>
+            <div class="tel-gate"><span class="tg-n">05</span><span class="tg-name">Audit</span><span class="tg-tag">POST</span></div>
+            <div class="tel-gate"><span class="tg-n">06</span><span class="tg-name">Rollback</span><span class="tg-tag">SAFE</span></div>
+          </div>
+        </div>
+        <div class="tel-section">
+          <div class="tel-hd">SYSTEM</div>
+          <div class="tel-path"><em>audit</em> .agentos/audit.jsonl</div>
+          <div class="tel-path"><em>api</em> localhost:3300/health</div>
+          <div class="tel-path"><em>pipe</em> /pipeline/pre · /feedback</div>
+          <div class="tel-path"><em>sandbox</em> direct · sandbox · dry-run</div>
+        </div>
+      </div>
+    </div>
+    <div class="rail-foot">
+      <div class="tel-hd">CLI</div>
+      <div class="tel-cmd"><span class="g">$</span> npx sentinel-agentos<br>risk <span class="c">git_push</span></div>
+      <div class="tel-links">
+        <a href="https://github.com/jishuanjimingtian/sentinel-agentos" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://www.npmjs.com/package/sentinel-agentos" target="_blank" rel="noopener">npm</a>
+      </div>
+    </div>
+  </div>
+</aside>
+
+</div><!-- /.wrap -->
+
+<nav id="nav">
+  <div class="nav-inner">
+    <a href="#" class="nav-logo brand-lockup">
+      <img src="logo.svg" alt="">
+      <span class="brand-text">
+        <span class="brand-top">Sentinel</span>
+        <span class="brand-bottom">AgentOS</span>
+      </span>
+    </a>
+    <div class="nav-end">
+    <ul class="nav-links" id="navLinks">
+      <li><a href="#why">为什么</a></li>
+      <li><a href="#demo">亮点</a></li>
+      <li><a href="#guard">Guard</a></li>
+      <li><a href="#memory">Memory</a></li>
+      <li><a href="#eval">Evaluator</a></li>
+      <li><a href="#integrate">接入</a></li>
+      <li class="nav-cta-mobile"><a href="#install" class="nav-cta">开始使用</a></li>
+    </ul>
+    <a href="#install" class="nav-cta">开始使用</a>
+    </div>
+    <button class="menu-btn" id="menuBtn" aria-label="菜单">☰</button>
+  </div>
+</nav>
+
+<div class="page-scroller" id="pageScroller">
+<div class="page-main">
+
+<!-- Hero -->
+<section class="hero">
+  <div class="container hero-inner">
+    <div class="hero-text reveal">
+      <p class="hero-kicker">Deterministic · Auditable · Evolvable</p>
+      <h1>
+        <span class="line subtle">AI Agent 的</span>
+        <span class="line grad">操作系统</span>
+      </h1>
+      <p class="hero-desc">
+        Prompt 说<em>「别删文件」</em>是愿望，不是物理定律。<br>
+        Sentinel 用确定性代码守住每一刀 — Guard 六重门 · 人脑记忆 · 隐性反馈。
+      </p>
+      <div class="hero-btns">
+        <a href="#install" class="btn btn-primary">立即接入</a>
+        <a href="https://github.com/jishuanjimingtian/sentinel-agentos" target="_blank" rel="noopener" class="btn btn-ghost">GitHub</a>
+      </div>
+      <div class="hero-proof reveal">
+        <span class="hero-chip">校验 &lt;1ms</span>
+        <span class="hero-chip">99 tests pass</span>
+        <span class="hero-chip">MIT License</span>
+        <span class="hero-chip">Node ≥18</span>
+      </div>
+    </div>
+    <div class="hero-visual reveal">
+      <div class="hero-logo-wrap">
+        <div class="hero-orbit o1"></div>
+        <div class="hero-orbit o2"></div>
+        <div class="hero-logo-glow"></div>
+        <div class="hero-logo-card glass">
+          <img class="hero-logo" src="logo.svg" alt="Sentinel AgentOS">
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="hero-scroll" aria-hidden="true">
+    <span>Scroll</span>
+    <div class="arrow"></div>
+  </div>
+</section>
+
+<!-- 亮点 Demo -->
+<section id="demo" class="demo-band sec-band">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Live Data</div>
+      <h2 class="sec-title">一眼看懂 <span class="hl">Sentinel</span> 在干什么</h2>
+      <p class="sec-sub">来自测试套件的真实 Risk 分数 + Verify Gate 幻觉拦截 — 不是营销话术，是跑出来的结果。</p>
+    </div>
+    <div class="demo-grid">
+      <div class="risk-panel glass reveal">
+        <h3>Risk Gate 四维分级</h3>
+        <p class="sub">同一套公式，不同工具自动得出不同处置 — 不用人工写 if/else</p>
+        <div class="risk-formula">RiskScore = Impact × (1−Rev) × Sensitivity × (1+ErrRate)</div>
+        <div class="risk-cards">
+          <div class="risk-item safe">
+            <span class="tool">write_file(src/*.ts)</span>
+            <span class="score">0.19</span>
+            <span class="action">放行</span>
+          </div>
+          <div class="risk-item mid">
+            <span class="tool">git_push</span>
+            <span class="score">0.94</span>
+            <span class="action">通知</span>
+          </div>
+          <div class="risk-item warn">
+            <span class="tool">delete_dir</span>
+            <span class="score">3.11</span>
+            <span class="action">确认</span>
+          </div>
+          <div class="risk-item danger">
+            <span class="tool">shell_rm_rf</span>
+            <span class="score">9.18</span>
+            <span class="action">拒绝</span>
+          </div>
+        </div>
+        <div class="risk-bar-wrap">
+          <div class="risk-bar-label"><span>0 安全</span><span>10 危险</span></div>
+          <div class="risk-bar">
+            <span class="b-safe"></span><span class="b-mid"></span><span class="b-warn"></span><span class="b-deny"></span>
+          </div>
+        </div>
+      </div>
+      <div class="verify-panel reveal">
+        <h3>Verify Gate 专捕幻觉</h3>
+        <p class="sub">Agent 说"写好了" ≠ 文件真的存在。执行后 SHA-256 对账，幻觉无处遁形。</p>
+        <div class="verify-vs">
+          <div class="verify-box agent">
+            <div class="lbl">🤖 AGENT 声称</div>
+            已成功写入 <code>src/utils/helper.ts</code>，包含 3 个导出函数，lint 通过。
+          </div>
+          <div class="verify-box real">
+            <div class="lbl">🔍 VERIFY 实测</div>
+            文件不存在 · Snapshot hash 不匹配 · tsc 未执行
+          </div>
+        </div>
+        <div class="verify-result">
+          verify: <strong>FAIL</strong> · postExec.verifyPassed → <strong>false</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 痛点 -->
+<section id="why">
+  <div class="container">
+    <div class="sec-hd reveal">
+      <div class="sec-label">痛点 → 方案</div>
+      <h2 class="sec-title">Agent 五大核心问题</h2>
+      <p class="sec-sub">Prompt 约束是愿望，不是物理定律。Sentinel 用确定性代码逐个击破。</p>
+    </div>
+    <div class="pain-grid">
+      <div class="pain glass reveal">
+        <span class="pain-idx-big">01</span>
+        <span class="pain-idx">01 / 05</span>
+        <div class="pain-body">
+          <div class="pain-prob"><strong>幻觉导致错误操作</strong>说"不要删"拦不住</div>
+          <div class="pain-sol"><span class="c">Guard</span> 确定性校验</div>
+        </div>
+      </div>
+      <div class="pain glass reveal">
+        <span class="pain-idx-big">02</span>
+        <span class="pain-idx">02 / 05</span>
+        <div class="pain-body">
+          <div class="pain-prob"><strong>越权危险操作</strong>要么全禁要么全放</div>
+          <div class="pain-sol"><span class="c">Risk Gate</span> 四维分级</div>
+        </div>
+      </div>
+      <div class="pain glass reveal">
+        <span class="pain-idx-big">03</span>
+        <span class="pain-idx">03 / 05</span>
+        <div class="pain-body">
+          <div class="pain-prob"><strong>记不住、记不对</strong>向量库≠真记忆</div>
+          <div class="pain-sol"><span class="g">三层人脑记忆</span></div>
+        </div>
+      </div>
+      <div class="pain glass reveal">
+        <span class="pain-idx-big">04</span>
+        <span class="pain-idx">04 / 05</span>
+        <div class="pain-body">
+          <div class="pain-prob"><strong>出事查不到</strong>操作全不可追溯</div>
+          <div class="pain-sol"><span class="p">不可篡改审计</span></div>
+        </div>
+      </div>
+      <div class="pain pain-wide glass reveal">
+        <span class="pain-idx-big">05</span>
+        <span class="pain-idx">05 / 05</span>
+        <div class="pain-body">
+          <div class="pain-prob"><strong>不知道 Agent 好不好</strong>最多有个 success rate 计数器</div>
+        </div>
+        <div class="pain-sol-wrap">
+          <div class="pain-sol"><span class="p">三阶段评估</span> + <span class="g">隐性反馈</span> + 质量画像</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 设计哲学 -->
+<section id="philosophy" class="sec-band">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Philosophy</div>
+      <h2 class="sec-title">不是 Agent，是 Agent 的<span class="hl">操作系统</span></h2>
+      <p class="sec-sub">内核管安全与记忆，框架只管推理 — 像 Linux 之于应用，Sentinel 之于 Agent。</p>
+    </div>
+    <div class="philosophy-grid">
+      <div class="phil-card glass reveal">
+        <div class="icon">⚙️</div>
+        <h3>确定性优先</h3>
+        <p>能不用 LLM 就不用。Schema 校验、风险公式、hash 对账 — 纯工程，零幻觉。</p>
+        <div class="anti">✗ 用 LLM 做安全判断</div>
+      </div>
+      <div class="phil-card glass reveal">
+        <div class="icon">📜</div>
+        <h3>可审计优先</h3>
+        <p>每次操作前后 diff，追加写入 .agentos/audit.jsonl — 可追溯、可回滚、可解释。</p>
+        <div class="anti">✗ 操作完无日志</div>
+      </div>
+      <div class="phil-card glass reveal">
+        <div class="icon">🔌</div>
+        <h3>渐进增强</h3>
+        <p>框架无关，一行 wrapAgent 接入。OpenClaw Plugin / CLI / HTTP API 任选。</p>
+        <div class="anti">✗ 强绑定单一框架</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Guard -->
+<section id="guard">
+  <div class="container">
+    <div class="sec-hd reveal">
+      <div class="sec-label">Guard Layer</div>
+      <h2 class="sec-title"><span class="hl">6 Gate</span> 确定性流水线</h2>
+      <p class="sec-sub">零 LLM 依赖。Schema → Risk → Snapshot → Verify → Audit → Rollback，每步可审计。</p>
+    </div>
+    <div class="pipeline">
+      <div class="pipe-step glass reveal">
+        <div class="pipe-num">01</div>
+        <div class="pipe-body"><h3>Schema Gate</h3><p>12 项规则：必填、类型、枚举、路径、黑白名单、互斥、大小、敏感标记</p></div>
+        <div class="pipe-tag">PRE</div>
+      </div>
+      <div class="pipe-step glass reveal">
+        <div class="pipe-num">02</div>
+        <div class="pipe-body"><h3>Risk Gate</h3><p>Impact × (1−Rev) × Sensitivity × (1+Err) — 纯数学，0.19 放行，9.9 拒绝</p></div>
+        <div class="pipe-tag">PRE</div>
+      </div>
+      <div class="pipe-step glass reveal">
+        <div class="pipe-num">03</div>
+        <div class="pipe-body"><h3>Snapshot Gate</h3><p>SHA-256 哈希 + git HEAD，只记 hash 不备份，&lt;1ms</p></div>
+        <div class="pipe-tag">PRE</div>
+      </div>
+      <div class="pipe-step glass reveal">
+        <div class="pipe-num">04</div>
+        <div class="pipe-body"><h3>Verify Gate</h3><p>文件存在 + hash 对比 + lint/tsc，专捕 Agent 幻觉</p></div>
+        <div class="pipe-tag">POST</div>
+      </div>
+      <div class="pipe-step glass reveal">
+        <div class="pipe-num">05</div>
+        <div class="pipe-body"><h3>Audit Log</h3><p>追加写入 .agentos/audit.jsonl，schema + risk + verify + diff</p></div>
+        <div class="pipe-tag">POST</div>
+      </div>
+      <div class="pipe-step glass reveal">
+        <div class="pipe-num">06</div>
+        <div class="pipe-body"><h3>Rollback</h3><p>git checkout 回滚 API，Snapshot 状态恢复</p></div>
+        <div class="pipe-tag">SAFE</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Memory -->
+<section id="memory" class="sec-band">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Memory Layer</div>
+      <h2 class="sec-title"><span class="hl">3 层</span>人脑记忆模型</h2>
+      <p class="sec-sub">不是 RAG 检索，是真记忆架构 — 评级、压缩、遗忘，像人脑一样运作。</p>
+    </div>
+    <div class="memory-stack">
+      <div class="mem-card glass reveal">
+        <div class="mem-num">01</div>
+        <h3>Working Memory</h3>
+        <div class="mem-en">工作记忆 · 实时</div>
+        <p>当前会话上下文、工具缓存、token 预算。单 session 存活，&lt;50KB</p>
+      </div>
+      <div class="mem-card glass reveal">
+        <div class="mem-num">02</div>
+        <h3>Episodic Memory</h3>
+        <div class="mem-en">情景记忆 · 跨会话</div>
+        <p>事件时间线、重要性评分、渐进压缩 full → summary → forgotten</p>
+      </div>
+      <div class="mem-card glass reveal">
+        <div class="mem-num">03</div>
+        <h3>Semantic Memory</h3>
+        <div class="mem-en">语义记忆 · 永久</div>
+        <p>用户偏好、项目上下文、学习规则（含置信度）、术语表</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Evaluator -->
+<section id="eval">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Evaluator Layer</div>
+      <h2 class="sec-title">三阶段评估 + 隐性反馈</h2>
+      <p class="sec-sub">不止看结果，看过程。从行为推断满意度，不靠 👍👎。</p>
+    </div>
+    <div class="eval-row">
+      <div class="eval-card glass reveal">
+        <div class="eval-phase">PHASE 1</div>
+        <h3>Pre-exec 执行前</h3>
+        <p>参数质量、风险预判、上下文利用。操作执行前评估合理性。</p>
+      </div>
+      <div class="eval-card glass reveal">
+        <div class="eval-phase">PHASE 2</div>
+        <h3>Runtime 执行中</h3>
+        <p>重试监控、自适应评分、工具选择准确性。实时跟踪行为质量。</p>
+      </div>
+      <div class="eval-card glass reveal">
+        <div class="eval-phase">PHASE 3</div>
+        <h3>Post-exec 执行后</h3>
+        <p>验证分析、接受度推断、结果利用度。形成 Agent 质量画像。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 隐性反馈 -->
+<section id="feedback" class="sec-band">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Implicit Feedback</div>
+      <h2 class="sec-title">不靠 👍👎，从行为读懂满意度</h2>
+      <p class="sec-sub">12 种信号自动检测 + 中文纠错语义分析 — 用户删代码、打断、改输出，系统都懂。</p>
+    </div>
+    <div class="feedback-grid">
+      <div class="fb-chip neg glass reveal"><div class="emoji">🗑️</div><div class="name">user_deleted_code</div><div class="desc">删掉 Agent 写的代码</div></div>
+      <div class="fb-chip neg glass reveal"><div class="emoji">✋</div><div class="name">user_interrupted</div><div class="desc">中途打断执行</div></div>
+      <div class="fb-chip neg glass reveal"><div class="emoji">✏️</div><div class="name">user_modified_output</div><div class="desc">手动改 Agent 输出</div></div>
+      <div class="fb-chip neg glass reveal"><div class="emoji">🔁</div><div class="name">user_repeated_instruction</div><div class="desc">重复同一指令</div></div>
+      <div class="fb-chip pos glass reveal"><div class="emoji">✅</div><div class="name">user_used_result</div><div class="desc">直接用了结果</div></div>
+      <div class="fb-chip pos glass reveal"><div class="emoji">👍</div><div class="name">user_explicit_approval</div><div class="desc">明确点赞认可</div></div>
+      <div class="fb-chip pos glass reveal"><div class="emoji">📤</div><div class="name">user_shared_output</div><div class="desc">分享 Agent 产出</div></div>
+      <div class="fb-chip pos glass reveal"><div class="emoji">🚀</div><div class="name">user_immediate_continue</div><div class="desc">满意后继续推进</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Stats -->
+<section class="stats-banner">
+  <div class="container">
+    <div class="stats-strip glass reveal">
+      <div class="stat-card"><div class="stat-num n1">6</div><div class="stat-lbl">Guard Gates</div></div>
+      <div class="stat-card"><div class="stat-num n2">12</div><div class="stat-lbl">Schema 规则</div></div>
+      <div class="stat-card"><div class="stat-num n3">12</div><div class="stat-lbl">反馈信号</div></div>
+      <div class="stat-card"><div class="stat-num n4">99</div><div class="stat-lbl">测试通过</div></div>
+      <div class="stat-card"><div class="stat-num n5">3</div><div class="stat-lbl">沙箱模式</div></div>
+      <div class="stat-card"><div class="stat-num n6">:3300</div><div class="stat-lbl">HTTP API</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 四种接入 -->
+<section id="integrate">
+  <div class="container">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Integration</div>
+      <h2 class="sec-title">CLI · SDK · HTTP · Plugin</h2>
+      <p class="sec-sub">本地调试、框架嵌入、远程服务、OpenClaw 原生插件 — 同一套 Guard 内核，四种入口。</p>
+    </div>
+    <div class="integrate-grid">
+      <div class="int-card glass reveal">
+        <div class="mode">MODE 01</div>
+        <h3>CLI 命令行</h3>
+        <p>零代码验证工具调用。本地快速试 Risk 分数、Schema 拦截、审计查询。</p>
+        <div class="int-code">npx sentinel-agentos validate <span class="hl">write_file</span> path=src/main.ts</div>
+        <span class="int-tag">调试首选</span>
+      </div>
+      <div class="int-card glass reveal">
+        <div class="mode">MODE 02</div>
+        <h3>SDK wrapAgent</h3>
+        <p>一行接入 LangChain / CrewAI / 自研框架。execute() 自动走完整 6 Gate 流水线。</p>
+        <div class="int-code">const aos = <span class="hl">wrapAgent</span>({ workspaceRoot: process.cwd() })</div>
+        <span class="int-tag">生产推荐</span>
+      </div>
+      <div class="int-card glass reveal">
+        <div class="mode">MODE 03</div>
+        <h3>HTTP API</h3>
+        <p>独立服务部署，任意语言调用。pre/post pipeline、审计查询、反馈上报全 REST 化。</p>
+        <div class="int-code">POST localhost:<span class="hl">3300</span>/pipeline/pre</div>
+        <span class="int-tag">跨语言</span>
+      </div>
+      <div class="int-card glass reveal">
+        <div class="mode">MODE 04</div>
+        <h3>OpenClaw Plugin</h3>
+        <p>框架层自动拦截所有工具调用，注册 before/after/session 三个 hook，Agent 完全无感。配套 <strong>sentinel-guard</strong> Skill 可手动包装 execute()。</p>
+        <div class="int-code">openclaw plugins install <span class="hl">sentinel-agentos</span><br>openclaw gateway restart</div>
+        <span class="int-tag plug">OpenClaw 首选</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Install -->
+<section id="install">
+  <div class="container install-wrap">
+    <div class="sec-hd center reveal">
+      <div class="sec-label">Get Started</div>
+      <h2 class="sec-title"><span class="hl">三行代码</span>接入</h2>
+      <p class="sec-sub">框架无关 · 增量接入 · 5 分钟增强你的 Agent</p>
+    </div>
+
+    <div class="install-dual reveal">
+      <div class="install-terminal" id="installTerminal">
+        <div class="term-bar">
+          <div class="term-dot r"></div>
+          <div class="term-dot y"></div>
+          <div class="term-dot g"></div>
+          <span class="term-title">SDK — TypeScript</span>
+        </div>
+        <div class="term-body">
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npm install sentinel-agentos</span></div>
+          <div class="term-line"><span class="term-comment"># 一行接入任意 Agent 框架</span></div>
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">import { wrapAgent } from <span class="term-highlight">'sentinel-agentos'</span></span></div>
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">const aos = wrapAgent({ workspaceRoot: process.cwd() })</span></div>
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">await aos.execute('write_file', { path, content }, fn)</span></div>
+        </div>
+      </div>
+      <div class="install-terminal">
+        <div class="term-bar">
+          <div class="term-dot r"></div>
+          <div class="term-dot y"></div>
+          <div class="term-dot g"></div>
+          <span class="term-title">CLI — 本地验证</span>
+        </div>
+        <div class="term-body">
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npx sentinel-agentos risk <span class="term-highlight">git_push</span></span></div>
+          <div class="term-line"><span class="term-comment"># → score: 0.94, action: notify</span></div>
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npx sentinel-agentos validate write_file path=<span class="term-highlight">.env</span></span></div>
+          <div class="term-line"><span class="term-comment"># → Schema FAIL: pathDeny 拦截敏感路径</span></div>
+          <div class="term-line"><span class="term-prompt">$</span><span class="term-cmd">npx sentinel-agentos audit --limit 5</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="install-note reveal">
+      还有 <strong>sentinel-light.js</strong> 零依赖轻量版 — 单文件拷贝即可启用 Guard 校验
+    </div>
+
+    <div class="install-actions reveal">
+      <button class="copy-btn" id="copyBtn" data-copy="npm install sentinel-agentos">复制安装命令</button>
+      <a href="https://github.com/jishuanjimingtian/sentinel-agentos" target="_blank" rel="noopener" class="btn btn-ghost">GitHub ↗</a>
+    </div>
+    <div class="install-tags reveal">
+      <span class="install-tag">OpenClaw</span>
+      <span class="install-tag">LangChain</span>
+      <span class="install-tag">CrewAI</span>
+      <span class="install-tag">自研框架</span>
+    </div>
+    <div class="install-links reveal">
+      <a href="https://www.npmjs.com/package/sentinel-agentos" target="_blank" rel="noopener">npm 包 ↗</a>
+      <a href="https://github.com/jishuanjimingtian/sentinel-agentos" target="_blank" rel="noopener">文档 & 源码 ↗</a>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="container">
+    <div class="foot-brand brand-lockup">
+      <img src="logo.svg" alt="">
+      <span class="brand-text">
+        <span class="brand-top">Sentinel</span>
+        <span class="brand-bottom">AgentOS</span>
+      </span>
+    </div>
+    <p>MIT 开源 · 用确定性让 Agent 可信</p>
+  </div>
+</footer>
+
+</div><!-- /.page-main -->
+</div><!-- /.page-scroller -->
+
+<script>
+  const nav = document.getElementById('nav');
+  const pageScroller = document.getElementById('pageScroller');
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const scrollToHash = (hash, behavior = 'smooth') => {
+    if (!pageScroller) return;
+    if (!hash || hash === '#') {
+      pageScroller.scrollTo({ top: 0, behavior });
+      return;
+    }
+    const el = document.querySelector(hash);
+    if (!el) return;
+    const y = el.getBoundingClientRect().top - pageScroller.getBoundingClientRect().top + pageScroller.scrollTop;
+    pageScroller.scrollTo({ top: Math.max(0, y - 8), behavior });
+  };
+
+  const updateScrollProgress = () => {
+    if (!pageScroller) return;
+    const h = pageScroller.scrollHeight - pageScroller.clientHeight;
+    const p = h > 0 ? Math.min(100, Math.round((pageScroller.scrollTop / h) * 100)) : 0;
+    const scrollProgress = document.getElementById('scrollProgress');
+    const scrollPct = document.getElementById('scrollPct');
+    if (scrollProgress) scrollProgress.style.width = p + '%';
+    if (scrollPct) scrollPct.textContent = p + '%';
+  };
+
+  const onPageScroll = () => {
+    if (!pageScroller) return;
+    const scrolled = pageScroller.scrollTop > 40;
+    nav.classList.toggle('scrolled', scrolled);
+    document.documentElement.style.setProperty('--nav-h', scrolled ? '68px' : '76px');
+    pageScroller.classList.add('is-scrolling');
+    clearTimeout(window._scrollBarTimer);
+    window._scrollBarTimer = setTimeout(() => pageScroller.classList.remove('is-scrolling'), 900);
+    updateScrollProgress();
+  };
+
+  pageScroller?.addEventListener('scroll', onPageScroll, { passive: true });
+  updateScrollProgress();
+  if (location.hash) scrollToHash(location.hash, 'auto');
+
+  document.getElementById('menuBtn').addEventListener('click', () => {
+    document.getElementById('navLinks').classList.toggle('open');
+  });
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', (e) => {
+      const hash = a.getAttribute('href');
+      if (!hash) return;
+      if (hash === '#' || document.querySelector(hash)) {
+        e.preventDefault();
+        scrollToHash(hash);
+        document.getElementById('navLinks').classList.remove('open');
+      }
+    });
+  });
+
+  const io = new IntersectionObserver(entries => {
+    entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); });
+  }, { threshold: 0.1, rootMargin: '0px 0px -50px 0px' });
+  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+  // Nav + side rail scroll spy
+  const sections = [...document.querySelectorAll('section[id]')];
+  const sectionNames = {
+    why: '为什么', demo: '亮点', guard: 'Guard', memory: 'Memory',
+    eval: 'Evaluator', integrate: '接入', install: '安装', philosophy: 'Philosophy', feedback: 'Feedback'
+  };
+  const navLinks = document.querySelectorAll('.nav-links a[href^="#"]');
+  const archLayers = document.querySelectorAll('.arch-layer[data-rail]');
+  const kernelPills = document.querySelectorAll('.k-pill[data-rail]');
+  const scrollProgress = document.getElementById('scrollProgress');
+  const scrollSection = document.getElementById('scrollSection');
+  const scrollPct = document.getElementById('scrollPct');
+
+  const spy = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (!e.isIntersecting) return;
+      const id = e.target.id;
+      navLinks.forEach(a => {
+        a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+      });
+      archLayers.forEach(a => {
+        a.classList.toggle('active', a.dataset.rail === id);
+      });
+      kernelPills.forEach(a => {
+        a.classList.toggle('active', a.dataset.rail === id);
+      });
+      if (scrollSection) {
+        scrollSection.textContent = sectionNames[id] || id;
+      }
+    });
+  }, { rootMargin: '-40% 0px -50% 0px', threshold: 0 });
+  sections.forEach(s => spy.observe(s));
+
+  // Particle network background
+  (function initParticles() {
+    if (reducedMotion) return;
+    const canvas = document.getElementById('bgCanvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let w, h, particles = [], mx = 0, my = 0, raf;
+
+    const resize = () => {
+      w = canvas.width = window.innerWidth;
+      h = canvas.height = window.innerHeight;
+    };
+    resize();
+    window.addEventListener('resize', resize);
+
+    const count = Math.min(42, Math.floor((w * h) / 28000));
+    for (let i = 0; i < count; i++) {
+      particles.push({
+        x: Math.random() * w, y: Math.random() * h,
+        vx: (Math.random() - .5) * .22, vy: (Math.random() - .5) * .22,
+        r: Math.random() * 1.2 + .4,
+        hue: Math.random() > .5 ? 187 : 258,
+        links: 0
+      });
+    }
+
+    document.addEventListener('mousemove', e => { mx = e.clientX; my = e.clientY; });
+
+    const maxLinks = 3;
+    const linkDist = 85;
+
+    const draw = () => {
+      ctx.clearRect(0, 0, w, h);
+      for (const p of particles) p.links = 0;
+
+      for (const p of particles) {
+        p.x += p.vx; p.y += p.vy;
+        if (p.x < 0 || p.x > w) p.vx *= -1;
+        if (p.y < 0 || p.y > h) p.vy *= -1;
+        const dx = mx - p.x, dy = my - p.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 100) {
+          p.x -= dx * .004; p.y -= dy * .004;
+        }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `hsla(${p.hue}, 70%, 68%, .32)`;
+        ctx.fill();
+      }
+      for (let i = 0; i < particles.length; i++) {
+        for (let j = i + 1; j < particles.length; j++) {
+          const a = particles[i], b = particles[j];
+          if (a.links >= maxLinks || b.links >= maxLinks) continue;
+          const d = Math.hypot(a.x - b.x, a.y - b.y);
+          if (d < linkDist) {
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.strokeStyle = `rgba(34,211,238,${.05 * (1 - d / linkDist)})`;
+            ctx.lineWidth = .4;
+            ctx.stroke();
+            a.links++; b.links++;
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw);
+    };
+    draw();
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) cancelAnimationFrame(raf);
+      else draw();
+    });
+  })();
+
+  const copyBtn = document.getElementById('copyBtn');
+  copyBtn.addEventListener('click', async () => {
+    const text = copyBtn.dataset.copy;
+    try {
+      await navigator.clipboard.writeText(text);
+      copyBtn.textContent = '✓ 已复制';
+      copyBtn.classList.add('copied');
+      setTimeout(() => {
+        copyBtn.textContent = '复制安装命令';
+        copyBtn.classList.remove('copied');
+      }, 2000);
+    } catch {
+      copyBtn.textContent = '请手动复制';
+    }
+  });
+</script>
+</body>
+</html>

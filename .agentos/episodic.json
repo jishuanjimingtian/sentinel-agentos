@@ -4544,5 +4544,167 @@
       "2026-06-15"
     ],
     "relatedEntities": []
+  },
+  {
+    "id": "ep_1781838903747_0475e318",
+    "timestamp": 1781838903747,
+    "type": "note",
+    "importance": 0.3,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 4 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781838903758_ea2fd524",
+    "timestamp": 1781838903758,
+    "type": "note",
+    "importance": 0.33,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
+  },
+  {
+    "id": "ep_1781839290144_0c89ccf0",
+    "timestamp": 1781839290144,
+    "type": "note",
+    "importance": 0.36,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 9 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781839290156_d9b0deed",
+    "timestamp": 1781839290156,
+    "type": "note",
+    "importance": 0.39,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
+  },
+  {
+    "id": "ep_1781839347068_43689bff",
+    "timestamp": 1781839347068,
+    "type": "note",
+    "importance": 0.42,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 18 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781839347077_b784caf1",
+    "timestamp": 1781839347078,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
+  },
+  {
+    "id": "ep_1781839364947_ffca20b4",
+    "timestamp": 1781839364947,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 19 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781839364972_ee4cb7a5",
+    "timestamp": 1781839364972,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
+  },
+  {
+    "id": "ep_1781839576531_140bc861",
+    "timestamp": 1781839576531,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 24 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781839576542_4d6d8b3b",
+    "timestamp": 1781839576542,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
+  },
+  {
+    "id": "ep_1781839759940_4ce4ecb5",
+    "timestamp": 1781839759940,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 33 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1781839759957_4cbc0f5b",
+    "timestamp": 1781839759957,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
   }
 ]

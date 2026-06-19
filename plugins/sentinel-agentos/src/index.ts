@@ -1,21 +1,21 @@
 /**
- * Sentinel AgentOS OpenClaw Plugin (v1.0.6)
+ * Sentinel AgentOS OpenClaw Plugin (v1.4)
  *
- * 安全接入版：同步审计 + 可配置规则 + 弹窗上下文
- *
- * Hook 生命周期:
- * - before_tool_call (priority 100): 确定性拦截，纯内存，零 I/O，永不阻塞
- * - after_tool_call (priority 90): 异步审计，500ms 超时，异常自动降级
- * - session_start: 异步注入上下文
+ * v1.4 智能审批集成：
+ *   - before_tool_call: 置信度评分 (D1-D5) + 行为追踪 + 确定性拦截
+ *   - after_tool_call: 审计 + 行为记录
+ *   - session_start: 上下文注入 + 记忆快照
  */
 
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
-import { AgentOS } from "sentinel-agentos";
+import { AgentOS, BehaviorModel, CreditSystem } from "sentinel-agentos";
+import { computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5 } from "sentinel-agentos";
+import type { ConfidenceResult } from "sentinel-agentos";
 import * as path from "node:path";
 import * as fs from "node:fs";
 
 // ═══════════════════════════════════════
-// 类型
+// Types
 // ═══════════════════════════════════════
 
 interface ToolCallEvent {
@@ -27,24 +27,28 @@ interface ToolCallEvent {
 }
 
 // ═══════════════════════════════════════
-// 全局状态
+// Global state
 // ═══════════════════════════════════════
 
 let aos: AgentOS | null = null;
-let aosReady = false;       // AgentOS 初始化完成标志
+let aosReady = false;
 let workspaceRoot = "";
 
-// ── Circuit Breaker ──
+// v1.4 独立实例（核心包未就绪时的备用）
+let behaviorModel: BehaviorModel | null = null;
+let creditSystem: CreditSystem | null = null;
+
+// Circuit breaker
 let consecutiveErrors = 0;
 const CB_THRESHOLD = 5;
-const CB_COOLDOWN_MS = 300_000; // 5 分钟
+const CB_COOLDOWN_MS = 300_000;
 let cbOpenUntil = 0;
 let cbTotalTrips = 0;
 
-// ── 上一次 AI 消息摘要（用于弹窗上下文） ──
+// 上一次 AI 消息摘要
 let lastAIMessage = "";
 
-// ── 审计去重 ──
+// 审计去重
 const recentAuditKeys = new Set<string>();
 let auditKeyCleanupTs = 0;
 
@@ -68,13 +72,11 @@ function globMatch(pattern: string, filepath: string): boolean {
   return new RegExp(`(^|[/\\\\])${p}$`, "i").test(filepath);
 }
 
-/** 秒级时间戳用于审计文件名 */
 function dateStamp(): string {
   return new Date().toISOString().split("T")[0];
 }
 
-/** 输出日志，带 circuit-breaker 状态 */
-let pluginApi: any = null;  // register 时注入
+let pluginApi: any = null;
 
 function log(msg: string): void {
   const cbState = cbOpenUntil > Date.now() ? " [CB:OPEN]" : consecutiveErrors > 0 ? ` [CB:${consecutiveErrors}/${CB_THRESHOLD}]` : "";
@@ -96,7 +98,6 @@ function warn(msg: string): void {
 function cbIsOpen(): boolean {
   if (cbOpenUntil === 0) return false;
   if (Date.now() > cbOpenUntil) {
-    // 冷却结束，半开
     cbOpenUntil = 0;
     consecutiveErrors = 0;
     log("Circuit breaker 冷却结束，恢复审计");
@@ -115,16 +116,14 @@ function cbRecordError(): void {
 }
 
 function cbRecordSuccess(): void {
-  if (consecutiveErrors > 0) {
-    consecutiveErrors = Math.max(0, consecutiveErrors - 1);
-  }
+  if (consecutiveErrors > 0) consecutiveErrors = Math.max(0, consecutiveErrors - 1);
 }
 
 // ═══════════════════════════════════════
-// 审计日志 rotate
+// 审计日志
 // ═══════════════════════════════════════
 
-const MAX_AUDIT_SIZE = 1_048_576; // 1 MB
+const MAX_AUDIT_SIZE = 1_048_576;
 const AUDIT_RETENTION_DAYS = 7;
 
 function rotateAuditLog(auditDir: string): string {
@@ -134,39 +133,24 @@ function rotateAuditLog(auditDir: string): string {
       const stat = fs.statSync(auditFile);
       if (stat.size > MAX_AUDIT_SIZE) {
         const archive = path.join(auditDir, `audit-${dateStamp()}.jsonl`);
-        // 如果当天已有归档，追加；否则重命名
         if (!fs.existsSync(archive)) {
           fs.renameSync(auditFile, archive);
           log(`审计日志已归档: audit-${dateStamp()}.jsonl (${(stat.size / 1024).toFixed(1)} KB)`);
         } else {
-          // 已有当天归档，直接清空当前
           fs.writeFileSync(auditFile, "", "utf-8");
           log(`审计日志已清空 (已有当天归档)`);
         }
       }
     }
-
-    // 清理过期归档
     const files = fs.readdirSync(auditDir).filter(f => f.startsWith("audit-") && f.endsWith(".jsonl"));
     const cutoff = Date.now() - AUDIT_RETENTION_DAYS * 86_400_000;
     for (const f of files) {
       const fp = path.join(auditDir, f);
-      try {
-        if (fs.statSync(fp).mtimeMs < cutoff) {
-          fs.unlinkSync(fp);
-          log(`已删除过期审计: ${f}`);
-        }
-      } catch { /* skip */ }
+      try { if (fs.statSync(fp).mtimeMs < cutoff) fs.unlinkSync(fp); } catch { /* skip */ }
     }
-  } catch (e) {
-    // rotate 失败不影响主流程
-  }
+  } catch { /* skip */ }
   return path.join(auditDir, "audit.jsonl");
 }
-
-// ═══════════════════════════════════════
-// 审计写入（异步非阻塞）
-// ═══════════════════════════════════════
 
 let auditBuffer: string[] = [];
 let auditFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -174,35 +158,24 @@ let auditFilePath = "";
 
 function auditWrite(line: string): void {
   auditBuffer.push(line);
-  if (auditBuffer.length >= 20) {
-    auditFlush();
-  } else if (!auditFlushTimer) {
-    // 最多等 2 秒批量写
-    auditFlushTimer = setTimeout(auditFlush, 2000).unref();
-  }
+  if (auditBuffer.length >= 20) auditFlush();
+  else if (!auditFlushTimer) auditFlushTimer = setTimeout(auditFlush, 2000).unref();
 }
 
 function auditFlush(): void {
   if (auditFlushTimer) { clearTimeout(auditFlushTimer); auditFlushTimer = null; }
   if (auditBuffer.length === 0 || !auditFilePath) return;
-
   const batch = auditBuffer.splice(0);
-  // 异步写，不阻塞事件循环
   setImmediate(() => {
-    try {
-      fs.appendFileSync(auditFilePath, batch.join("\n") + "\n", "utf-8");
-    } catch {
-      // 丢弃这批（宁可丢审计也不能崩）
-    }
+    try { fs.appendFileSync(auditFilePath, batch.join("\n") + "\n", "utf-8"); } catch { /* discard */ }
   });
 }
 
 // ═══════════════════════════════════════
-// 规则定义（不变）
+// 规则定义
 // ═══════════════════════════════════════
 
 const DANGEROUS_COMMANDS: Array<[RegExp, string]> = [
-  // ── Linux 高危 ──
   [/rm\s+-rf\s+\//, "rm -rf / — 删除整个系统"],
   [/sudo\s+rm/, "sudo rm — 提权删除"],
   [/chmod\s+777/, "chmod 777 — 开放所有权限"],
@@ -210,27 +183,17 @@ const DANGEROUS_COMMANDS: Array<[RegExp, string]> = [
   [/:\{\s*:\|[\s]*:&\s*\};?\s*:/, "Fork Bomb — 耗尽系统资源"],
   [/>\s*\/dev\/sd[a-z]\d*/, "覆盖磁盘设备 — 破坏分区表"],
   [/dd\s+if=.+\s+of=\/dev\/sd/, "dd 写入磁盘设备 — 覆盖分区"],
-  // ── Windows 高危 ──
   [/del\s+\/f\s+\/s/, "del /f /s — 强制递归删除"],
   [/rd\s+\/s\s+\/q\s+[A-Z]:\\/, "rd /s /q C:\\ — 递归删除盘符"],
   [/Remove-Item\s.*-Recurse\s.*-Force/, "Remove-Item -Recurse -Force — PowerShell 递归删除"],
   [/format\s+[a-z]:/, "format — 格式化磁盘"],
   [/cipher\s+\/w/, "cipher /w — 安全擦除磁盘空间"],
-  // ── Docker 逃逸 ──
   [/docker\s+run\s+.*-v\s+\/\s*:\s*\/host/, "docker run -v /:/host — 挂载宿主机根目录"],
   [/docker\s+run\s+.*--privileged/, "docker run --privileged — 特权容器"],
-  [/docker\s+exec\s+-it/, "docker exec -it — 进入运行中容器"],
-  // ── 数据库高危 ──
   [/DROP\s+DATABASE\b/, "DROP DATABASE — 删除数据库"],
   [/DROP\s+TABLE\b/, "DROP TABLE — 删除表"],
   [/TRUNCATE\s+(TABLE\s+)?\w+/, "TRUNCATE — 清空表数据"],
-  // ── 网络外泄 ──
   [/nc\s+-e/, "nc -e — 反向 Shell"],
-  [/powershell\s+(Invoke-WebRequest|iwr)\s.*-OutFile/, "PowerShell 下载文件到本地"],
-  // ── 编码逃逸 ──
-  [/base64\s.*-d\s*\|/, "base64 解码管道 — 编码逃逸"],
-  [/echo\s+[A-Za-z0-9+/=]{20,}\s*\|\s*base64/, "base64 内联解码 — 编码逃逸"],
-  // ── 管道执行 ──
   [/\|\s*sh$/, "管道到 sh — 执行未知脚本"],
   [/\|\s*bash$/, "管道到 bash — 执行未知脚本"],
   [/curl\s+.*\|\s*(ba)?sh/, "curl | sh — 执行远程脚本"],
@@ -238,20 +201,12 @@ const DANGEROUS_COMMANDS: Array<[RegExp, string]> = [
 ];
 
 const WARNING_COMMANDS: Array<[RegExp, string]> = [
-  // ── Git 高危 ──
   [/git\s+push\s+--force/, "git push --force — 强制推送"],
   [/git\s+push\s+-f\b/, "git push -f — 强制推送"],
   [/git\s+reset\s+--hard/, "git reset --hard — 硬重置"],
   [/git\s+commit\s+--amend\s+--no-edit/, "git commit --amend — 修改提交历史"],
-  [/git\s+rebase\s+-i/, "git rebase -i — 交互式变基"],
-  // ── 包管理器 ──
   [/npm\s+publish/, "npm publish — 发布到 npm 仓库"],
   [/npm\s+unpublish/, "npm unpublish — 下架包"],
-  [/pip\s+install/, "pip install — 安装 Python 包"],
-  [/gem\s+install/, "gem install — 安装 Ruby 包"],
-  [/cargo\s+install/, "cargo install — 安装 Rust 包"],
-  [/go\s+install\b/, "go install — 安装 Go 包"],
-  // ── Docker 警告 ──
   [/docker\s+rm/, "docker rm — 删除容器"],
   [/docker\s+system\s+prune/, "docker system prune — 清理 Docker"],
 ];
@@ -272,7 +227,6 @@ const WATCHDOG_PATTERNS: RegExp[] = [
   /health/i, /3408/, /3456/, /dashboard-watchdog/i,
   /cleanup-session-locks/i, /agentos-memory-sync/i,
   /mem-sync/i, /episodic.*sync/i,
-  // 噪音命令——忽略自身工具调用
   /^echo\s/, /^npx sentinel-agentos/,
 ];
 
@@ -286,34 +240,43 @@ function validateContent(filepath: string, content: string): string | null {
     try { JSON.parse(content); return null; }
     catch (e: unknown) { return `JSON 语法错误: ${e instanceof Error ? e.message : String(e)}`; }
   }
-  if (ext === ".yaml" || ext === ".yml") {
-    if (content.includes("\t") && content.includes("  ")) {
-      return "YAML 缩进混用：同时包含 tab 和空格";
-    }
+  if ((ext === ".yaml" || ext === ".yml") && content.includes("\t") && content.includes("  ")) {
+    return "YAML 缩进混用：同时包含 tab 和空格";
   }
   return null;
 }
 
-/** 展开 node -e 内联脚本中的字符串拼接绕过 */
 function expandNodeEval(cmd: string): string | null {
-  // 匹配 node -e "..." 形式的 inline eval
   const m = cmd.match(/node\s+-e\s+"([^"]*)"/);
   if (!m) return null;
-  const script = m[1];
-  // 展开所有 'xx'+'yy' 形式为 xxyy
-  const expanded = script.replace(/'([^']*)'\s*\+\s*'([^']*)'/g, "'$1$2'");
-  // 递归展开（处理 'a'+'b'+'c'）
-  const prev = script;
-  if (expanded === prev) return null;
+  const expanded = m[1].replace(/'([^']*)'\s*\+\s*'([^']*)'/g, "'$1$2'");
+  if (expanded === m[1]) return null;
   return expandNodeEval(cmd.replace(m[1], expanded)) || cmd.replace(m[1], expanded);
 }
 
-/** 判断命令是否为 watchdog/内部健康检查 */
 function isWatchdogCommand(cmd: string): boolean {
-  for (const re of WATCHDOG_PATTERNS) {
-    if (re.test(cmd)) return true;
-  }
+  for (const re of WATCHDOG_PATTERNS) { if (re.test(cmd)) return true; }
   return false;
+}
+
+// ═══════════════════════════════════════
+// 简易风险评分（AgentOS 未就绪时用）
+// ═══════════════════════════════════════
+
+const FALLBACK_RISK: Record<string, number> = {
+  exec: 3, write: 2, edit: 2, delete: 4, read: 0.3,
+  web_search: 0.5, web_fetch: 0.5, apply_patch: 3,
+};
+
+function fallbackRiskScore(toolName: string, params?: Record<string, unknown>): number {
+  const base = FALLBACK_RISK[toolName] ?? 1;
+  const cmd = String(params?.command || "");
+  if (/rm\s+-rf\s+\//.test(cmd)) return 10;
+  if (/sudo/.test(cmd)) return 8;
+  if (/drop\s|truncate\s|format\s/.test(cmd)) return 9;
+  if (/git\s+push\s+--force/.test(cmd)) return 5;
+  if (/npm\s+publish/.test(cmd)) return 4;
+  return base;
 }
 
 // ═══════════════════════════════════════
@@ -321,16 +284,25 @@ function isWatchdogCommand(cmd: string): boolean {
 // ═══════════════════════════════════════
 
 function initAgentOSAsync(): void {
-  // 使用 setImmediate 推迟到事件循环下一轮，不阻塞 register()
   setImmediate(() => {
     try {
       aos = new AgentOS({ workspaceRoot });
+
+      // v1.4 智能审批直接挂到 AgentOS 实例上
+      if (typeof (aos as any).scoring === "object") {
+        log(`v1.4 智能审批已就绪 (置信度+行为+信用)`);
+      } else {
+        // 备用：单独初始化
+        behaviorModel = new BehaviorModel();
+        (behaviorModel as any).enablePersistence(workspaceRoot);
+        creditSystem = new CreditSystem();
+        (creditSystem as any).enablePersistence(workspaceRoot);
+        log(`v1.4 智能审批已就绪 (备用模式)`);
+      }
+
       aosReady = true;
-
-      // 去重：清理初始化产生的重复 milestone
       deduplicateEpisodic();
-
-      log(`AgentOS 已加载 → ${workspaceRoot}`);
+      log(`AgentOS v0.4.0 已加载 → ${workspaceRoot}`);
     } catch (e: unknown) {
       warn(`AgentOS 初始化失败: ${e instanceof Error ? e.message : String(e)}`);
       aos = null;
@@ -339,7 +311,6 @@ function initAgentOSAsync(): void {
   });
 }
 
-/** episodic 初始化去重 + 跳过 watchdog 记录 */
 function deduplicateEpisodic(): void {
   if (!aos) return;
   try {
@@ -348,28 +319,63 @@ function deduplicateEpisodic(): void {
       count?: number;
     };
     if (!events.events || !Array.isArray(events.events)) return;
-
     const seen = new Set<string>();
     const deduped: typeof events.events = [];
-
     for (const ev of events.events) {
-      // 跳过 watchdog/sync 事件
-      if (ev.tags && ev.tags.some(t => t === "sync")) continue;
+      if (ev.tags?.some(t => t === "sync")) continue;
       if (ev.content && (ev.content.includes("Sync completed") || ev.content.includes("health"))) continue;
-
-      // 重复 milestone 去重
       const key = `${ev.type}::${ev.content}`;
       if (seen.has(key)) continue;
       seen.add(key);
       deduped.push(ev);
     }
-
     const before = events.events.length;
     events.events = deduped;
     if (events.count !== undefined) events.count = deduped.length;
     const removed = before - deduped.length;
     if (removed > 0) log(`episodic 去重: ${before} → ${deduped.length} (删除 ${removed})`);
-  } catch { /* 非关键 */ }
+  } catch { /* non-critical */ }
+}
+
+// ═══════════════════════════════════════
+// v1.4 置信度包装器
+// ═══════════════════════════════════════
+
+function computeConfidenceForTool(
+  toolName: string,
+  params: Record<string, unknown>,
+  lastMsg: string,
+): ConfidenceResult {
+  const riskScore = aosReady && aos
+    ? aos.guard.risk.evaluate(toolName, params)
+    : { score: fallbackRiskScore(toolName, params), action: "confirm", dimensions: {} };
+
+  if (aosReady && aos && typeof (aos as any).computeConfidence === "function") {
+    return (aos as any).computeConfidence(toolName, params, riskScore, lastMsg);
+  }
+
+  // 备用：直接用核心包导出的函数
+  const d1 = scoreD1(riskScore as any);
+  const history = { exactMatchCount: 0, sameToolCount: 0, sameCategoryCount: 0 };
+  const d2 = scoreD2(toolName, params, history);
+  const d3 = scoreD3(toolName, lastMsg);
+  const p = String(params?.path || params?.file || "");
+  const d4 = scoreD4(p);
+  const d5 = scoreD5(new Date(), 0);
+  return computeConfidence({ d1, d2, d3, d4, d5 });
+}
+
+function recordBehaviorForTool(
+  toolName: string,
+  params: Record<string, unknown>,
+  success: boolean,
+  confirmed: boolean,
+): void {
+  if (aosReady && aos && typeof (aos as any).recordBehavior === "function") {
+    (aos as any).recordBehavior(toolName, params, success, confirmed);
+  } else if (behaviorModel) {
+    behaviorModel.record({ toolName, params, success, confirmed });
+  }
 }
 
 // ═══════════════════════════════════════
@@ -379,60 +385,72 @@ function deduplicateEpisodic(): void {
 const plugin = definePluginEntry({
   id: "sentinel-agentos",
   name: "Sentinel AgentOS",
-  description: "确定性 Guard + 分层记忆 + 自动评估 (安全接入版 v1.1)",
+  description: "v1.4 智能审批: 置信度评分 + 行为追踪 + 信用体系 + Guard",
 
   register(api) {
     pluginApi = api;
     workspaceRoot = detectWorkspace();
 
-    // 确保审计目录存在（同步，极快）
     const auditDir = path.join(workspaceRoot, ".agentos");
     try { fs.mkdirSync(auditDir, { recursive: true }); } catch { /* ok */ }
-
-    // rotate 审计日志
     auditFilePath = rotateAuditLog(auditDir);
-
-    // 异步初始化 AgentOS（不阻塞 gateway 启动）
     initAgentOSAsync();
 
     // ══════════════════════════════════
-    // Hook 0: 捕获最近对话上下文（用于弹窗意图提示）
+    // Hook 0: before_prompt_build — 对话上下文
     // ══════════════════════════════════
+
     api.on("before_prompt_build", async (event: any) => {
       try {
         const msgs: any[] = event?.messages ?? [];
-        // 取最近 2 条用户消息作为上下文
-        const userMsgs = msgs
-          .filter((m: any) => m.role === "user" && typeof m.content === "string")
-          .slice(-2);
+        const userMsgs = msgs.filter((m: any) => m.role === "user" && typeof m.content === "string").slice(-2);
         if (userMsgs.length > 0) {
-          lastAIMessage = userMsgs.map((m: any) =>
-            (m.content as string).slice(0, 200)
-          ).join(" | ");
+          lastAIMessage = userMsgs.map((m: any) => (m.content as string).slice(0, 200)).join(" | ");
         }
-      } catch { /* 非关键 */ }
+      } catch { /* non-critical */ }
     });
 
     // ══════════════════════════════════
-    // Hook 1: before_tool_call — 确定性拦截 (P100)
-    //
-    // 纯内存、纯正则、零 I/O。
-    // 即使 AgentOS 未就绪也正常工作（规则是硬编码的）。
+    // Hook 1: before_tool_call — v1.4 置信度评分 + 拦截 (P100)
     // ══════════════════════════════════
 
     api.on("before_tool_call", async (event: ToolCallEvent) => {
       const { toolName, params } = event;
       const p = (params as Record<string, unknown>)?.path || (params as Record<string, unknown>)?.file || "";
+      const contextHint = lastAIMessage ? `\n\n📋 最近任务: ${lastAIMessage}` : "";
 
-      // 构建上下文提示
-      const contextHint = lastAIMessage
-        ? `\n\n📋 最近任务: ${lastAIMessage}`
-        : "";
+      // v1.4 计算置信度
+      const confidenceResult = computeConfidenceForTool(toolName, params || {}, lastAIMessage);
+      const { confidence, decision, dimensions } = confidenceResult;
+      const { d1, d2, d3, d4, d5 } = dimensions;
 
+      // 记录行为
+      recordBehaviorForTool(toolName, params || {}, true, decision !== "block");
+
+      // 置信度摘要
+      const confSummary = !lastAIMessage ? "" :
+        `📊 置信度: ${confidence}/100\n` +
+        `  D1(命令风险): ${d1.score}/100\n` +
+        `  D2(历史行为): ${d2.score}/100 (${d2.matchLevel})\n` +
+        `  D3(上下文): ${d3.score}/100 (${d3.matched}/${d3.total}关键词)\n` +
+        `  D4(路径): ${d4.score}/100 (${d4.pathType})\n` +
+        `  D5(时间): ${d5.score}/100${d5.offHours ? " 🌙" : ""}`;
+
+      // auto-approve: 直接放行
+      if (decision === "auto-approve") {
+        return;
+      }
+
+      // block: 直接拦截
+      if (decision === "block") {
+        const reason = `置信度过低 (${confidence}/100)  (D1=${d1.score} D2=${d2.score} D3=${d3.score} D4=${d4.score} D5=${d5.score})`;
+        return { block: true, blockReason: `🚫 Sentinel: ${reason}` };
+      }
+
+      // confirm (40-79): 按规则弹窗
       // ── 危险命令拦截 ──
       if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
         const cmd = String((params as Record<string, unknown>).command);
-        // 展开 inline 脚本中的字符串拼接绕过（e.g. 'np'+'m pu'+'blish'）
         const expandedCmd = expandNodeEval(cmd);
         const checkCmd = expandedCmd || cmd;
         for (const [re, desc] of DANGEROUS_COMMANDS) {
@@ -440,7 +458,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "🚫 Sentinel 拦截",
-                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}${contextHint}`,
+                description: `${confSummary}\n\nSentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}${contextHint}`,
                 severity: "critical" as const,
                 timeoutMs: 60_000,
                 timeoutBehavior: "deny" as const,
@@ -453,7 +471,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "⚠️ 需要确认",
-                description: `Sentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}${contextHint}`,
+                description: `${confSummary}\n\nSentinel: ${desc}\n\n命令: ${cmd.substring(0, 200)}${contextHint}`,
                 severity: "warning" as const,
                 timeoutMs: 60_000,
                 timeoutBehavior: "deny" as const,
@@ -479,7 +497,7 @@ const plugin = definePluginEntry({
             return {
               requireApproval: {
                 title: "⚠️ 修改核心配置",
-                description: `Sentinel: 文件 "${p}" 受保护，修改可能导致系统不可用。确认继续？${contextHint}`,
+                description: `${confSummary}\n\nSentinel: 文件 "${p}" 受保护，修改可能导致系统不可用。确认继续？${contextHint}`,
                 severity: "warning" as const,
                 timeoutMs: 60_000,
                 timeoutBehavior: "deny" as const,
@@ -492,17 +510,23 @@ const plugin = definePluginEntry({
       // ── 内容语法校验 ──
       if (p && ["write", "edit"].includes(toolName) && (params as Record<string, unknown>)?.content) {
         const err = validateContent(String(p), String((params as Record<string, unknown>).content));
-        if (err) {
-          return { block: true, blockReason: `🚫 Sentinel: ${err}` };
-        }
+        if (err) return { block: true, blockReason: `🚫 Sentinel: ${err}` };
       }
+
+      // 通用确认
+      return {
+        requireApproval: {
+          title: "⚠️ 操作需要确认",
+          description: `${confSummary}\n\n操作: ${toolName}\n${contextHint}`,
+          severity: "warning" as const,
+          timeoutMs: 60_000,
+          timeoutBehavior: "deny" as const,
+        },
+      };
     }, { priority: 100 });
 
     // ══════════════════════════════════
     // Hook 2: after_tool_call — 异步审计 (P90)
-    //
-    // 全部操作在 setImmediate 里执行，500ms 硬超时。
-    // AgentOS 未就绪或 circuit breaker 打开时降级为纯文件审计。
     // ══════════════════════════════════
 
     let lastAuditTs = 0;
@@ -515,109 +539,74 @@ const plugin = definePluginEntry({
         if (isWatchdogCommand(String((params as Record<string, unknown>).command))) return;
       }
 
-      // 审计去重：1 秒内相同的 tool+params hash 跳过
+      // 审计去重
       const now = Date.now();
       const hash = `${toolName}:${JSON.stringify(params || {}).slice(0, 80)}`;
-      if (now - auditKeyCleanupTs > 60_000) {
-        recentAuditKeys.clear();
-        auditKeyCleanupTs = now;
-      }
+      if (now - auditKeyCleanupTs > 60_000) { recentAuditKeys.clear(); auditKeyCleanupTs = now; }
       if (recentAuditKeys.has(hash)) return;
       recentAuditKeys.add(hash);
 
-      // backpressure: 2 秒内快速连续调用只记轻量日志
       const isBurst = now - lastAuditTs < 2000;
       lastAuditTs = now;
 
-      // 轻量审计行（不管 CB 状态都记）
+      // 轻量审计
       const lightLine = JSON.stringify({
         id: `audit_${now}`,
         ts: new Date().toISOString(),
-        toolName: toolName,
-        ok: !error,
-        stage: "light",
+        toolName, ok: !error, stage: "light",
         ...(isBurst ? {} : { toolParameters: params ? JSON.stringify(params).substring(0, 200) : "{}" }),
       });
       auditWrite(lightLine);
-
-      // 如果只是 burst 模式，到此为止
       if (isBurst) return;
-
-      // circuit breaker 检查：打开时不走 AgentOS 完整 pipeline
       if (cbIsOpen()) return;
 
-      // ── 异步 AgentOS pipeline ──
+      // 异步 AgentOS pipeline
       const done = { value: false };
       const timeoutId = setTimeout(() => {
-        if (!done.value) {
-          done.value = true;
-          cbRecordError();
-          warn(`after_tool_call 超时 (${toolName})`);
-        }
+        if (!done.value) { done.value = true; cbRecordError(); warn(`after_tool_call 超时 (${toolName})`); }
       }, 500);
 
       setImmediate(() => {
-        if (done.value) return; // 已超时
-
+        if (done.value) return;
         try {
-          if (!aos || !aosReady) {
-            done.value = true;
-            clearTimeout(timeoutId);
-            return;
-          }
+          if (!aos || !aosReady) { done.value = true; clearTimeout(timeoutId); return; }
 
-          // episodic 记录（仅非噪音 exec 命令）
+          // episodic 记录
           if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
             const cmd = String((params as Record<string, unknown>).command);
-            // 跳过短暂/查询类命令，减少噪音
             const isNoise = /^(echo|dir|ls|cat|type|Get-|Select-|Measure-|npx sentinel|openclaw |node -v|npm -v|git status|git log|git diff)/i.test(cmd.trim());
-            if (!isNoise) {
-              aos.memory.episodic.record("tool_call", cmd, ["exec"], []);
-            }
+            if (!isNoise) aos.memory.episodic.record("tool_call", cmd, ["exec"], []);
           }
 
-          // 反馈
-          if (!error) {
-            aos.recordFeedback("user_used_result", "plugin_session");
-          }
-
+          if (!error) aos.recordFeedback("user_used_result", "plugin_session");
           cbRecordSuccess();
         } catch (e: unknown) {
           cbRecordError();
           warn(`after_tool_call 异常: ${e instanceof Error ? e.message : String(e)}`);
         }
-
         done.value = true;
         clearTimeout(timeoutId);
       });
     }, { priority: 90 });
 
     // ══════════════════════════════════
-    // Hook 3: session_start — 精简上下文注入
-    //
-    // 关键优化：只注入最近 5 条高重要性 episodic 事件 + 语义摘要。
-    // 避免全量 episodic 膨胀导致 MEMORY.md 越来越大 → token 浪费。
+    // Hook 3: session_start — 上下文注入 + 记忆快照
     // ══════════════════════════════════
 
     api.on("session_start", async () => {
       if (!aos || !aosReady) return;
       setImmediate(() => {
         try {
-          // 只取最近 5 条高重要性事件（importance >= 0.6）
           const allEvents = aos!.memory.episodic.getAll();
-          const topEvents = allEvents
-            .filter((e: { importance: number }) => e.importance >= 0.6)
-            .slice(0, 5);
+          const topEvents = allEvents.filter((e: { importance: number }) => e.importance >= 0.6).slice(0, 5);
 
           const parts: string[] = [];
 
-          // 语义记忆（最多 800 字符）
           try {
             const sem = aos!.memory.semantic.generateContextSummary(800);
             if (sem) parts.push(sem);
-          } catch { /* 降级 */ }
+          } catch { /* degrade */ }
 
-          // 精选 episodic（最多 600 字符）
           if (topEvents.length > 0) {
             const lines = ['[AgentOS Episodic Memory]', ''];
             for (const ev of topEvents) {
@@ -632,7 +621,7 @@ const plugin = definePluginEntry({
           const ctx = parts.join('\n\n---\n\n');
           log(`上下文已注入 (${ctx.length} chars, ${topEvents.length} 精选事件 / ${allEvents.length} 总计)`);
 
-          // 可搜索索引：写入 memory/agentos-episodic.md 供 memory_search 索引
+          // 可搜索索引
           try {
             const snapshot = aos!.memory.episodic.getSearchableSnapshot(50);
             if (snapshot) {
@@ -641,13 +630,37 @@ const plugin = definePluginEntry({
               fs.writeFileSync(path.join(memDir, "agentos-episodic.md"), snapshot, "utf-8");
               log(`可搜索索引已写入 memory/agentos-episodic.md`);
             }
-          } catch { /* 非关键 */ }
-        } catch { /* 非关键 */ }
+          } catch { /* non-critical */ }
+        } catch { /* non-critical */ }
       });
     });
 
-    log("✅ 已注册 3 hook: before_tool_call(P100) + after_tool_call(P90/async) + session_start + 可搜索索引(agentos-episodic)");
-    log(`拦截规则: 危险x${DANGEROUS_COMMANDS.length} | 警告x${WARNING_COMMANDS.length} | 敏感文件x${SENSITIVE_PATTERNS.length} | 保护文件x${PROTECTED_PATTERNS.length} | JSON/YAML校验 | CB阈值=${CB_THRESHOLD} | CB熔断次数=${cbTotalTrips}`);
+    // v1.4 信用体系初始化（独立于 AgentOS 核心实例）
+    setImmediate(() => {
+      try {
+        if (!creditSystem) {
+          creditSystem = new CreditSystem();
+          (creditSystem as any).enablePersistence(workspaceRoot);
+        }
+        creditSystem.applyInactivityDecay();
+        log(`信用体系已就绪`);
+
+        // 信用报告
+        const agents = creditSystem.getAllAgents();
+        const agentCount = Object.keys(agents).length;
+        if (agentCount > 0) {
+          const summary = Object.entries(agents)
+            .map(([id, a]) => `${id}: L${a.level} (${a.totalOps} ops)`)
+            .join(", ");
+          log(`信用报告: ${summary}`);
+        } else {
+          log(`信用报告: 尚无 Agent 数据`);
+        }
+      } catch { /* non-critical */ }
+    });
+
+    log("✅ v1.4 已注册: before_tool_call(置信度/行为/拦截) + after_tool_call(审计) + session_start(记忆)");
+    log(`拦截规则: 危险x${DANGEROUS_COMMANDS.length} | 警告x${WARNING_COMMANDS.length} | CB阈值=${CB_THRESHOLD}`);
   },
 });
 
