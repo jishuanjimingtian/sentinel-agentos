@@ -1,0 +1,198 @@
+/**
+ * Credit System — 信用等级模块
+ *
+ * 四级信用体系：
+ *   L3 完全信任
+ *   L2 高度信任
+ *   L1 基本信任
+ *   L0 不信任
+ *
+ * 信用升降自动根据行为调整。
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+export type CreditLevel = 0 | 1 | 2 | 3;
+
+export interface AgentCredit {
+  level: CreditLevel;
+  totalOps: number;
+  denied: number;
+  allowedOps: number;
+  lastActivity: number;
+  consecutiveSuccesses: number;
+  consecutiveDenials: number;
+}
+
+export interface CreditConfig {
+  agents: Record<string, AgentCredit>;
+  defaultLevel: CreditLevel;
+  lastUpdated: number;
+}
+
+const SUCCESS_UPGRADE_THRESHOLD = 10;
+const DENIAL_DOWNGRADE_THRESHOLD = 3;
+const INACTIVITY_DOWNGRADE_DAYS = 30;
+
+function clampLevel(value: number): CreditLevel {
+  if (value <= 0) return 0;
+  if (value >= 3) return 3;
+  return value as CreditLevel;
+}
+
+export function creditToConfidenceBoost(level: number): number {
+  switch (level) {
+    case 3: return 10;
+    case 2: return 5;
+    case 1: return 0;
+    case 0: return -20;
+    default: return 0;
+  }
+}
+
+export function creditToConfidenceThresholds(level: CreditLevel): {
+  autoApproveMin: number;
+  confirmMin: number;
+} {
+  switch (level) {
+    case 3: return { autoApproveMin: 60, confirmMin: 25 };
+    case 2: return { autoApproveMin: 80, confirmMin: 40 };
+    case 1: return { autoApproveMin: 90, confirmMin: 50 };
+    case 0: return { autoApproveMin: 101, confirmMin: 60 };
+    default: return { autoApproveMin: 90, confirmMin: 50 };
+  }
+}
+
+export class CreditSystem {
+  private config: CreditConfig;
+  private storagePath?: string;
+
+  constructor() {
+    this.config = {
+      agents: {},
+      defaultLevel: 0,
+      lastUpdated: Date.now(),
+    };
+  }
+
+  enablePersistence(workspaceRoot: string): void {
+    this.storagePath = path.join(workspaceRoot, '.agentos', 'credit.json');
+    this.load();
+  }
+
+  getAgent(agentId: string): AgentCredit {
+    if (!this.config.agents[agentId]) {
+      this.config.agents[agentId] = {
+        level: this.config.defaultLevel,
+        totalOps: 0,
+        denied: 0,
+        allowedOps: 0,
+        lastActivity: 0,
+        consecutiveSuccesses: 0,
+        consecutiveDenials: 0,
+      };
+    }
+    return this.config.agents[agentId]!;
+  }
+
+  recordOutcome(agentId: string, allowed: boolean, wasBlocked: boolean): void {
+    const agent = this.getAgent(agentId);
+    agent.totalOps++;
+    agent.lastActivity = Date.now();
+
+    if (allowed) {
+      agent.allowedOps++;
+      agent.consecutiveSuccesses++;
+      agent.consecutiveDenials = 0;
+
+      if (agent.consecutiveSuccesses >= SUCCESS_UPGRADE_THRESHOLD && agent.level < 3) {
+        agent.level = clampLevel(agent.level + 1);
+        agent.consecutiveSuccesses = 0;
+      }
+    } else {
+      agent.denied++;
+      agent.consecutiveDenials++;
+      agent.consecutiveSuccesses = 0;
+
+      if (agent.consecutiveDenials >= DENIAL_DOWNGRADE_THRESHOLD && agent.level > 0) {
+        agent.level = clampLevel(agent.level - 1);
+        agent.consecutiveDenials = 0;
+      }
+    }
+
+    if (wasBlocked) {
+      agent.level = clampLevel(agent.level - 2);
+      agent.consecutiveDenials = 0;
+    }
+
+    this.save();
+  }
+
+  applyInactivityDecay(): void {
+    const cutoff = Date.now() - INACTIVITY_DOWNGRADE_DAYS * 24 * 60 * 60 * 1000;
+    let changed = false;
+
+    for (const agentId of Object.keys(this.config.agents)) {
+      const agent = this.config.agents[agentId]!;
+      if (agent.lastActivity > 0 && agent.lastActivity < cutoff && agent.level > 0) {
+        agent.level = clampLevel(agent.level - 1);
+        changed = true;
+      }
+    }
+
+    if (changed) this.save();
+  }
+
+  getLevel(agentId: string): CreditLevel {
+    return this.getAgent(agentId).level;
+  }
+
+  setLevel(agentId: string, level: CreditLevel): void {
+    this.getAgent(agentId).level = level;
+    this.save();
+  }
+
+  get defaultLevel(): CreditLevel {
+    return this.config.defaultLevel;
+  }
+
+  setDefaultLevel(level: CreditLevel): void {
+    this.config.defaultLevel = level;
+    this.save();
+  }
+
+  getAllAgents(): Record<string, AgentCredit> {
+    const copy: Record<string, AgentCredit> = {};
+    for (const [id, agent] of Object.entries(this.config.agents)) {
+      copy[id] = { ...agent };
+    }
+    return copy;
+  }
+
+  private save(): void {
+    if (!this.storagePath) return;
+    try {
+      const dir = path.dirname(this.storagePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      this.config.lastUpdated = Date.now();
+      fs.writeFileSync(this.storagePath, JSON.stringify(this.config, null, 2), 'utf-8');
+    } catch {
+      // non-critical
+    }
+  }
+
+  private load(): void {
+    if (!this.storagePath) return;
+    try {
+      if (fs.existsSync(this.storagePath)) {
+        const raw = fs.readFileSync(this.storagePath, 'utf-8');
+        this.config = JSON.parse(raw);
+      }
+    } catch {
+      this.config.agents = {};
+    }
+  }
+}

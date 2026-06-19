@@ -6,6 +6,7 @@ import {
   PreExecMetrics,
   RuntimeMetrics,
   PostExecMetrics,
+  HealthCheckReport,
 } from './types';
 import { SchemaGate } from './guard/schema-gate';
 import { RiskGate } from './guard/risk-gate';
@@ -18,6 +19,9 @@ import { PreExecEvaluator, RuntimeEvaluator, PostExecEvaluator } from './evaluat
 import { ImplicitFeedbackEngine } from './evaluator/feedback';
 import { AgentProfiler } from './evaluator/profiler';
 import type { AgentProfile } from './evaluator/profiler';
+import { BehaviorModel } from './behavior-model';
+import { CreditSystem, creditToConfidenceBoost, creditToConfidenceThresholds } from './credit';
+import { computeConfidence, scoreD1, scoreD2, scoreD3, scoreD4, scoreD5, ConfidenceResult } from './scoring';
 
 /**
  * AgentOS — the complete AI Agent Operating System.
@@ -67,6 +71,12 @@ export class AgentOS {
     postExec: PostExecEvaluator;
     feedback: ImplicitFeedbackEngine;
     profiler: AgentProfiler;
+  };
+
+  // v1.4 智能审批
+  readonly scoring: {
+    behavior: BehaviorModel;
+    credit: CreditSystem;
   };
 
   constructor(config?: Partial<AgentOSConfig>) {
@@ -121,6 +131,15 @@ export class AgentOS {
       feedback: feedbackEngine,
       profiler,
     };
+
+    // --- v1.4 智能审批 Init ---
+    const behavior = new BehaviorModel();
+    behavior.enablePersistence(this.config.workspaceRoot!);
+
+    const credit = new CreditSystem();
+    credit.enablePersistence(this.config.workspaceRoot!);
+
+    this.scoring = { behavior, credit };
   }
 
   /**
@@ -222,11 +241,13 @@ export class AgentOS {
     });
 
     // --- Phase 2: Post-exec verification ---
-    const verifyResult = this.guard.verify.verify(
-      toolName,
-      snapshot!,
-      { files: toolParameters['path'] ? [String(toolParameters['path'])] : undefined },
-    );
+    const verifyResult = snapshot
+      ? this.guard.verify.verify(
+          toolName,
+          snapshot,
+          { files: toolParameters['path'] ? [String(toolParameters['path'])] : undefined },
+        )
+      : { status: 'PASS' as const, checks: [] as import('./types').VerifyCheck[] };
 
     // --- Phase 3: Post-exec evaluation ---
     const postExec = this.evaluator.postExec.evaluate({
@@ -257,6 +278,10 @@ export class AgentOS {
 
     // --- Phase 5.5: Auto-detect result utilization (after track, avoids race) ---
     this.detectResultUtilization(toolParameters, sessionId);
+
+    // --- Phase 5.6: Credit system — record outcome for trust-based auto-approval (v1.4.1) ---
+    const wasBlocked = verifyResult.status !== 'PASS' || postExec.outcomeScore < 0.3;
+    this.scoring.credit.recordOutcome(agentId, true, wasBlocked);
 
     // --- Phase 6: Record in profiler (reuse pre-exec from pipeline start) ---
     const preExecMetric = this.evaluator.preExec.evaluate(toolName, toolParameters);
@@ -303,6 +328,69 @@ export class AgentOS {
       warnings: profile.warnings,
       strengths: profile.strengths,
     };
+  }
+
+  /**
+   * Compute confidence score for a tool call (v1.4 智能审批).
+   *
+   * D1-D5 五维度评分，结合信用体系调整阈值，返回置信度与决策建议。
+   */
+  computeConfidence(
+    toolName: string,
+    params: Record<string, unknown>,
+    riskScore: { score: number },
+    lastAIMessage?: string,
+    agentId?: string,
+  ): ConfidenceResult {
+    const d1 = scoreD1(riskScore as any);
+    const history = this.scoring.behavior.getStats(toolName, params);
+    const d2 = scoreD2(toolName, params, history);
+    const d3 = scoreD3(toolName, lastAIMessage || '');
+    const d4 = scoreD4(String(params?.path || params?.file || ''));
+    const now = new Date();
+    const freq = this.scoring.behavior.getRecentFrequency(toolName);
+    const d5 = scoreD5(now, freq);
+
+    // v1.4.1: 信用体系联动 — 根据 agent 信用等级动态调整决策阈值
+    const creditLevel = agentId ? this.scoring.credit.getLevel(agentId) : 1;
+    const boost = creditToConfidenceBoost(creditLevel);
+    const thresholds = creditToConfidenceThresholds(creditLevel);
+
+    const result = computeConfidence({ d1, d2, d3, d4, d5 });
+
+    // 用信用等级覆盖默认阈值
+    const adjustedConfidence = this.clamp0to100(result.confidence + boost);
+    let decision: 'auto-approve' | 'confirm' | 'block';
+    if (adjustedConfidence >= thresholds.autoApproveMin) {
+      decision = 'auto-approve';
+    } else if (adjustedConfidence >= thresholds.confirmMin) {
+      decision = 'confirm';
+    } else {
+      decision = 'block';
+    }
+
+    return {
+      ...result,
+      confidence: adjustedConfidence,
+      decision,
+      dimensions: {
+        ...result.dimensions,
+        creditBoost: boost,
+        creditLevel,
+      } as any,
+    };
+  }
+
+  /**
+   * Record a tool call outcome in behavior model (v1.4).
+   */
+  recordBehavior(
+    toolName: string,
+    params: Record<string, unknown>,
+    success: boolean,
+    confirmed: boolean,
+  ): void {
+    this.scoring.behavior.record({ toolName, params, success, confirmed });
   }
 
   /**
@@ -379,6 +467,11 @@ export class AgentOS {
     // Phase 5: Append daily log if workspaceRoot provided
     if (workspaceRoot) {
       this.appendDailyLog(sessionId, workspaceRoot);
+    }
+
+    // Phase 5b: Write searchable memory snapshot for memory_search
+    if (workspaceRoot) {
+      this.writeMemorySnapshot(workspaceRoot);
     }
 
     // Phase 5: Decay unused semantic rules
@@ -464,6 +557,49 @@ export class AgentOS {
   }
 
   /**
+   * Write a searchable memory snapshot to workspace/memory/agentos-memory.md
+   * so OpenClaw's memory_search can index it across sessions.
+   */
+  /**
+   * Clamp to 0-100 range.
+   */
+  private clamp0to100 = (v: number) => Math.max(0, Math.min(100, v));
+
+  private writeMemorySnapshot(workspaceRoot: string): void {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+
+      const memDir = path.join(workspaceRoot, 'memory');
+      if (!fs.existsSync(memDir)) {
+        fs.mkdirSync(memDir, { recursive: true });
+      }
+
+      const snapshotPath = path.join(memDir, 'agentos-memory.md');
+
+      const semanticSummary = this.memory.semantic.generateContextSummary(2000);
+      const episodicSnapshot = this.memory.episodic.getSearchableSnapshot(50);
+
+      const content = [
+        '# AgentOS Memory Snapshot',
+        '',
+        `> Auto-generated at ${new Date().toISOString()}`,
+        '',
+        semanticSummary,
+        '',
+        '---',
+        '',
+        episodicSnapshot,
+        '',
+      ].join('\n');
+
+      fs.writeFileSync(snapshotPath, content, 'utf-8');
+    } catch {
+      // Non-critical — memory search fallback degrades gracefully
+    }
+  }
+
+  /**
    * Append evaluation summary to daily log file.
    */
   private appendDailyLog(sessionId: string, workspaceRoot: string): void {
@@ -533,7 +669,9 @@ export class AgentOS {
    * Get the current agent quality profile.
    */
   getProfile(sessionId?: string): AgentProfile {
-    return this.evaluator.profiler.getProfile(sessionId);
+    // 从审计日志获取真实操作总数，修复 profiler 计数器 session 重启归零的问题
+    const auditTotal = this.guard.audit.stats().totalOperations;
+    return this.evaluator.profiler.getProfile(sessionId, auditTotal);
   }
 
   /**
@@ -570,5 +708,124 @@ export class AgentOS {
     }
 
     return lines.join('\n');
+  }
+
+  /**
+   * Health Check — 系统全维度健康体检 (v1.4.1)
+   *
+   * 返回结构化的体检报告，覆盖以下维度：
+   *   - 质量评分 (Quality): profiler + satisfaction
+   *   - 审计 (Audit): 操作总量 / 失败 / 高风险
+   *   - 信用 (Credit): 各 agent 等级分布
+   *   - 记忆 (Memory): working / episodic / semantic 状态
+   *   - 规则 (Rules): schema guard 规则数
+   *   - 活跃度 (Activity): 24h 操作频率
+   *
+   * @param full 是否输出完整文本报告 (default: false → 返回对象)
+   */
+  healthCheck(full?: false): HealthCheckReport;
+  healthCheck(full: true): string;
+  healthCheck(full = false): HealthCheckReport | string {
+    const profile = this.getProfile();
+    const audit = this.getAuditStats();
+
+    // 信用维度
+    const creditLevels: Record<string, number> = { L0: 0, L1: 0, L2: 0, L3: 0 };
+    const creditAgents = this.scoring.credit.getAllAgents();
+    for (const agent of Object.values(creditAgents)) {
+      const level = agent?.level;
+      if (level != null) creditLevels[`L${level}`] = (creditLevels[`L${level}`] ?? 0) + 1;
+    }
+    const totalCreditAgents = Object.keys(creditAgents).length;
+    const avgCreditLevel = totalCreditAgents > 0
+      ? ((creditLevels.L3 ?? 0) * 3 + (creditLevels.L2 ?? 0) * 2 + (creditLevels.L1 ?? 0) * 1) / totalCreditAgents
+      : 0;
+
+    // 记忆维度
+    const workingMsgs = this.memory.working.getState().recentMessages.length;
+    const episodicCount = this.memory.episodic.count ?? 0;
+    const semanticRules = this.memory.semantic.getRules(0.3).length;
+
+    // guard rules
+    const guardRules = (this.guard as any).schema?.rules?.length ?? 0;
+
+    // 活跃度
+    const recent24h = this.evaluator.profiler.getProfile(undefined, audit.totalOperations).trends.recentOps;
+
+    // 综合健康等级
+    let healthScore = 0;
+    healthScore += Math.min(profile.overallScore / 100, 1) * 30;   // quality (0-30)
+    healthScore += audit.verifyFailures === 0 ? 25 : Math.max(0, 25 - audit.verifyFailures * 5); // audit (0-25)
+    healthScore += Math.min(avgCreditLevel / 3, 1) * 20;           // credit (0-20)
+    healthScore += episodicCount > 0 ? 15 : 0;                     // memory (0-15)
+    healthScore += guardRules > 0 ? 10 : 0;                        // rules (0-10)
+    healthScore = Math.round(healthScore);
+
+    const healthTier = healthScore >= 80 ? 'healthy' : healthScore >= 50 ? 'warning' : 'critical';
+
+    const report: HealthCheckReport = {
+      timestamp: new Date().toISOString(),
+      healthScore,
+      healthTier,
+      quality: {
+        overallScore: profile.overallScore,
+        breakdown: profile.breakdown,
+        trends: profile.trends,
+        warnings: profile.warnings,
+        strengths: profile.strengths,
+      },
+      audit: {
+        totalOperations: audit.totalOperations,
+        verifyFailures: audit.verifyFailures,
+        highRiskOps: audit.highRiskOps,
+      },
+      credit: {
+        agents: totalCreditAgents,
+        averageLevel: Math.round(avgCreditLevel * 100) / 100,
+        distribution: creditLevels,
+      },
+      memory: {
+        workingMessages: workingMsgs,
+        episodicEvents: episodicCount,
+        semanticRules,
+      },
+      rules: { guardRules, active: guardRules > 0 },
+      activity: { recent24h },
+    };
+
+    if (full) {
+      const lines = [
+        '=== 🏥 AgentOS Health Check ===',
+        '',
+        `Health Score: ${healthScore}/100 (${healthTier.toUpperCase()})`,
+        `Timestamp: ${report.timestamp}`,
+        '',
+        '--- 📊 Quality ---',
+        `Overall: ${profile.overallScore}/100 ${profile.trends.improving ? '📈' : '📉'}`,
+        `Pre-Exec: ${profile.breakdown.preExec ?? 'N/A'} | Runtime: ${profile.breakdown.runtime ?? 'N/A'} | Post-Exec: ${profile.breakdown.postExec ?? 'N/A'}`,
+        `Satisfaction: ${profile.breakdown.userSatisfaction}/100`,
+        ...(profile.warnings.length > 0 ? [`⚠️  ${profile.warnings.join('; ')}`] : []),
+        ...(profile.strengths.length > 0 ? [`✅ ${profile.strengths.join('; ')}`] : []),
+        '',
+        '--- 📋 Audit ---',
+        `Total Ops: ${audit.totalOperations} | Failures: ${audit.verifyFailures} | High-Risk: ${audit.highRiskOps}`,
+        '',
+        '--- 🛡️ Credit System ---',
+        `Agents: ${totalCreditAgents} | Avg Level: ${report.credit.averageLevel}`,
+        `L3: ${creditLevels.L3} | L2: ${creditLevels.L2} | L1: ${creditLevels.L1} | L0: ${creditLevels.L0}`,
+        '',
+        '--- 🧠 Memory ---',
+        `Working: ${workingMsgs} msgs | Episodic: ${episodicCount} events | Semantic: ${semanticRules} rules`,
+        '',
+        '--- 📏 Guard Rules ---',
+        `Active: ${guardRules} rules`,
+        '',
+        '--- ⚡ Activity ---',
+        `24h Ops: ${recent24h}`,
+      ];
+      return lines.join('\n');
+    }
+
+    return report;
   }
 }

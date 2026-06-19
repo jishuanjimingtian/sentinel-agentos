@@ -56,6 +56,9 @@ export interface WrappedAgent {
   /** Get status report */
   statusReport: () => string;
 
+  /** Health check report (v1.4.1) */
+  healthCheck: (full?: boolean) => import('../types').HealthCheckReport | string;
+
   /** Raw AgentOS instance for advanced use */
   readonly aos: AgentOS;
 }
@@ -133,16 +136,26 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
         affectedFiles: opts?.affectedFiles,
       });
 
-      if (preExec.riskScore.action === 'deny') {
+      // v1.4.1: 信用联动决策 — 用 computeConfidence (含 credit boost) 覆写 deny 判定
+      const confidence = aos.computeConfidence(
+        toolName, params, preExec.riskScore, undefined, aid,
+      );
+
+      if (confidence.decision === 'block') {
+        aos.scoring.credit.recordOutcome(aid, false, true);
         return {
           allowed: false,
-          reason: `Risk score ${preExec.riskScore.score} → ${preExec.riskScore.action}`,
+          reason: `Confidence ${confidence.confidence} (L${aos.scoring.credit.getLevel(aid)}) → BLOCK`,
           profile: aos.getProfile(sid),
         };
       }
 
       // Optionally warn for 'confirm' level — but in middleware we auto-proceed
       // In production you'd hook this into your Agent's confirmation loop
+      if (confidence.decision === 'confirm') {
+        // Track that confirmation was required
+        aos.scoring.behavior.record({ toolName, params, success: false, confirmed: false });
+      }
 
       const startTime = Date.now();
 
@@ -219,6 +232,10 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
 
     statusReport() {
       return aos.statusReport();
+    },
+
+    healthCheck(full?: boolean) {
+      return aos.healthCheck(full as any);
     },
   };
 

@@ -274,3 +274,49 @@ export interface SentinelError extends Error {
   code: ErrorCode;
   details?: unknown;
 }
+
+// === Health Check Types (v1.4.1) ===
+
+export interface HealthCheckReport {
+  timestamp: string;
+  healthScore: number;
+  healthTier: 'healthy' | 'warning' | 'critical';
+  quality: {
+    overallScore: number;
+    breakdown: {
+      preExec: number | null;
+      runtime: number | null;
+      postExec: number | null;
+      userSatisfaction: number;
+    };
+    trends: {
+      improving: boolean;
+      recentOps: number;
+      recentScore: number;
+    };
+    warnings: string[];
+    strengths: string[];
+  };
+  audit: {
+    totalOperations: number;
+    verifyFailures: number;
+    highRiskOps: number;
+  };
+  credit: {
+    agents: number;
+    averageLevel: number;
+    distribution: Record<string, number>;
+  };
+  memory: {
+    workingMessages: number;
+    episodicEvents: number;
+    semanticRules: number;
+  };
+  rules: {
+    guardRules: number;
+    active: boolean;
+  };
+  activity: {
+    recent24h: number;
+  };
+}

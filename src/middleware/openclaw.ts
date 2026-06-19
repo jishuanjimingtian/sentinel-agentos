@@ -48,6 +48,9 @@ export interface OpenClawPlugin {
   recordApproval: (sessionId: string) => void;
   recordCorrection: (sessionId: string) => void;
   recordDeletion: (sessionId: string) => void;
+
+  /** Health check report (v1.4.1) */
+  healthCheck: (full?: boolean) => import('../types').HealthCheckReport | string;
 }
 
 /**
@@ -134,6 +137,10 @@ export function sentinelPlugin(config?: Partial<AgentOSConfig>): OpenClawPlugin 
 
     recordDeletion(sessionId) {
       wrapped.aos.recordFeedback('user_deleted_code', sessionId);
+    },
+
+    healthCheck(full?: boolean) {
+      return wrapped.aos.healthCheck(full as any);
     },
   };
 }
