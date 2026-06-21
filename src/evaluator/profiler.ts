@@ -1,4 +1,4 @@
-import {
+﻿import {
   PreExecMetrics,
   RuntimeMetrics,
   PostExecMetrics,
@@ -6,7 +6,7 @@ import {
 import { ImplicitFeedbackEngine } from './feedback';
 
 /**
- * Agent quality profile — accumulated across all evaluations.
+ * Agent quality profile 鈥?accumulated across all evaluations.
  */
 export interface AgentProfile {
   /** Overall quality score (0-100) */
@@ -33,7 +33,7 @@ export interface AgentProfile {
 }
 
 /**
- * AgentProfiler — builds and maintains the agent's quality profile.
+ * AgentProfiler 鈥?builds and maintains the agent's quality profile.
  *
  * Aggregates PreExec + Runtime + PostExec metrics and
  * ImplicitFeedback to produce a composite quality score
@@ -46,7 +46,7 @@ export class AgentProfiler {
   private runMetrics: RuntimeMetrics[] = [];
   private postMetrics: PostExecMetrics[] = [];
   private sessionScores: Map<string, number[]> = new Map();
-  // Circular buffer cap — prevent unbounded memory growth
+  // Circular buffer cap 鈥?prevent unbounded memory growth
   private static readonly MAX_HISTORY = 200;
 
   constructor(feedbackEngine: ImplicitFeedbackEngine) {
@@ -113,7 +113,7 @@ export class AgentProfiler {
     const satisfaction = this.feedbackEngine.getSatisfactionScore(sessionId);
     const satisfactionScore = ((satisfaction + 1) / 2) * 100; // Map -1..1 to 0..100
 
-    // Overall: weighted — only include dimensions with data
+    // Overall: weighted 鈥?only include dimensions with data
     let overallScore = 0;
     let totalWeight = 0;
     if (this.preMetrics.length > 0) { overallScore += preExecScore * 0.2; totalWeight += 0.2; }
@@ -141,14 +141,14 @@ export class AgentProfiler {
     const warnings: string[] = [];
     const strengths: string[] = [];
 
-    if (this.runMetrics.length > 0 && runtimeScore < 0.5) {
-      warnings.push('High retry rate — consider more planning before execution');
+    if (this.runMetrics.length > 0 && runtimeScore < 30) {
+      warnings.push('High retry rate 鈥?consider more planning before execution');
     }
-    if (this.postMetrics.length > 0 && postExecScore < 0.5) {
-      warnings.push('Low verify pass rate — verify results before claiming success');
+    if (this.postMetrics.length > 0 && postExecScore < 30) {
+      warnings.push('Low verify pass rate 鈥?verify results before claiming success');
     }
     if (satisfaction < -0.3) {
-      warnings.push('User satisfaction declining — review recent sessions');
+      warnings.push('User satisfaction declining 鈥?review recent sessions');
     }
 
     if (runtimeScore > 0.9) {

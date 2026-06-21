@@ -1,4 +1,4 @@
-/** @type {import('ts-jest').JestConfigWithTsJest} */
+﻿/** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
@@ -12,6 +12,7 @@ module.exports = {
         module: 'commonjs',
         moduleResolution: 'node',
         strict: true,
+        noUnusedLocals: false,
         esModuleInterop: true,
         skipLibCheck: true,
         baseUrl: '.',

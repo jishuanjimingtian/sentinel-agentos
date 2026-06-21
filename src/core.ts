@@ -1,4 +1,4 @@
-import {
+﻿import {
   AgentOSConfig,
   GuardConfig,
   Snapshot,
@@ -403,8 +403,14 @@ export class AgentOS {
     const semanticSummary = this.memory.semantic.generateContextSummary(2000);
     const episodicSummary = this.memory.episodic.generateContextSummary(1500);
 
-    const parts: string[] = [];
+    // #7: Highlight high-confidence rules (>=85%) at the top
+    const topRules = this.memory.semantic.getRules(0.85).slice(0, 3);
+    const highlighted = topRules.length > 0
+      ? '⚠️  KEY RULES:\n' + topRules.map(r => '  • [' + Math.round(r.confidence * 100) + '%] ' + r.rule).join('\n')
+      : '';
 
+    const parts: string[] = [];
+    if (highlighted) parts.push(highlighted);
     if (semanticSummary) parts.push(semanticSummary);
     if (episodicSummary) parts.push(episodicSummary);
 
@@ -479,6 +485,30 @@ export class AgentOS {
 
     // Phase 5.3: Clean up profiler session scores
     this.evaluator.profiler.clearSession(sessionId);
+
+    // #8: Auto-rotate audit log if too large (>10MB)
+    try {
+      const auditPath = require('path').join(this.config.workspaceRoot ?? '.', '.agentos', 'audit.jsonl');
+      if (require('fs').existsSync(auditPath)) {
+        const stat = require('fs').statSync(auditPath);
+        if (stat.size > 10 * 1024 * 1024) {
+          const rotatePath = auditPath + '.1';
+          if (require('fs').existsSync(rotatePath)) require('fs').unlinkSync(rotatePath);
+          require('fs').renameSync(auditPath, rotatePath);
+          console.warn('[AgentOS] Audit log rotated (>10MB)');
+        }
+      }
+    } catch (e: any) {
+      console.warn('[AgentOS] Audit rotation failed:', e.message);
+    }
+
+    // #8: Auto-compress episodic if too many events (>2000)
+    try {
+      const epPath = require('path').join(this.config.workspaceRoot ?? '.', '.agentos', 'episodic.json');
+      if (require('fs').existsSync(epPath) && require('fs').statSync(epPath).size > 2 * 1024 * 1024) {
+        console.warn('[AgentOS] Episodic memory is large, compression triggered on next record');
+      }
+    } catch {}
 
     // Phase 5.5: Force Episodic compression
     this.memory.episodic.record('note', 'Session end', ['session-end'], []);

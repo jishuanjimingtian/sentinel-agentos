@@ -1,4 +1,4 @@
-import {
+﻿import {
   EpisodicEvent,
   EventType,
 } from '../types';
@@ -29,7 +29,7 @@ const BASE_IMPORTANCE: Record<EventType, number> = {
 };
 
 /**
- * Episodic Memory — cross-session event timeline.
+ * Episodic Memory 鈥?cross-session event timeline.
  *
  * Stores past events as a timeline with automatic importance scoring
  * and progressive compression. Important events stay detailed forever;
@@ -60,7 +60,7 @@ export class EpisodicMemory {
    * @param relatedEntities - Related projects/files/people
    * @param customImportanceBoost - Additional importance boost (0-1)
    */
-  record(
+    record(
     type: EventType,
     content: string,
     tags: string[] = [],
@@ -68,6 +68,30 @@ export class EpisodicMemory {
     customImportanceBoost = 0,
   ): EpisodicEvent {
     const baseImportance = BASE_IMPORTANCE[type] ?? 0.3;
+
+    // #6: Skip self-test noise — filter out sentinel-agentos/echo self-checks
+    const NOISE_PATTERNS = [
+      /^npx sentinel-agentos/,
+      /^sentinel-agentos/,
+      /echo\s+(sentinel|[a-z]+-agentos)/i,
+      /npx\s+[\w-]+\s+(stats|status|audit|profile)\b/,
+    ];
+    if (NOISE_PATTERNS.some((p) => p.test(content))) {
+      const lowImportance: EpisodicEvent = {
+        id: generateEventId(),
+        timestamp: Date.now(),
+        type,
+        importance: 0.05,
+        compression: 'one-liner',
+        content: content.slice(0, 80),
+        tags: ['noise', ...tags],
+        relatedEntities,
+      };
+      this.events.push(lowImportance);
+      this.compressIfNeeded();
+      this.save();
+      return lowImportance;
+    }
 
     // RecencyBoost: DESIGN.md §5.4 — newer = more important
     // Boost = 1.0 + max(0, 1.0 - ageInDays / 30)
@@ -171,7 +195,7 @@ export class EpisodicMemory {
     for (const event of recent) {
       const date = new Date(event.timestamp).toISOString().split('T')[0];
       const icon = this.typeIcon(event.type);
-      const importance = event.importance >= 0.7 ? '⚠️' : '';
+      const importance = event.importance >= 0.7 ? '鈿狅笍' : '';
       const content = event.compression === 'one-liner'
         ? event.content
         : event.content.slice(0, 150);
@@ -208,7 +232,7 @@ export class EpisodicMemory {
         ? event.content.slice(0, 300) + '...'
         : event.content;
       const tags = event.tags.length > 0 ? ` [${event.tags.join(', ')}]` : '';
-      const imp = event.importance >= 0.7 ? ` ★${Math.round(event.importance * 100)}%` : '';
+      const imp = event.importance >= 0.7 ? ` 鈽?{Math.round(event.importance * 100)}%` : '';
       lines.push(`${icon} ${date}${imp}${tags}: ${content}`);
     }
 
@@ -239,13 +263,13 @@ export class EpisodicMemory {
 
   /**
    * Compress events if total size exceeds threshold.
-   * Progressive: full → summary → one-liner → forgotten (deleted).
+   * Progressive: full 鈫?summary 鈫?one-liner 鈫?forgotten (deleted).
    */
   private compressIfNeeded(): void {
     const now = Date.now();
     const maxBytes = this.maxSizeKb * 1024;
     let iterations = 0;
-    const MAX_ITERATIONS = 100; // safety cap — prevent infinite loop on pathological data
+    const MAX_ITERATIONS = 100; // safety cap 鈥?prevent infinite loop on pathological data
 
     while (this.estimatedSize > maxBytes && this.events.length > 0 && iterations < MAX_ITERATIONS) {
       iterations++;
@@ -292,7 +316,7 @@ export class EpisodicMemory {
    * Compress a single event to the next level.
    *
    * Strategy: low-importance events compress on a faster schedule;
-   * the most aggressive step is full→summary for tool_call (<0.4) events
+   * the most aggressive step is full鈫抯ummary for tool_call (<0.4) events
    * after just 1 day, because tool_call events are the majority by volume.
    */
   private compressEvent(event: EpisodicEvent): void {
@@ -300,7 +324,7 @@ export class EpisodicMemory {
 
     switch (event.compression) {
       case 'full':
-        // tool_call with importance <= 0.4 → summary after 1 day
+        // tool_call with importance <= 0.4 鈫?summary after 1 day
         if (event.importance <= 0.4 && ageDays > 1) {
           event.compression = 'summary';
           event.content = event.content.slice(0, 250);
@@ -335,16 +359,16 @@ export class EpisodicMemory {
 
   private typeIcon(type: EventType): string {
     switch (type) {
-      case 'tool_call': return '🔧';
-      case 'tool_failure': return '❌';
-      case 'decision': return '🎯';
-      case 'correction': return '✏️';
-      case 'publish': return '📦';
-      case 'error': return '💥';
-      case 'milestone': return '🏁';
-      case 'note': return '📝';
-      case 'user_feedback': return '💬';
-      default: return '📌';
+      case 'tool_call': return '馃敡';
+      case 'tool_failure': return '💀';
+      case 'decision': return '馃幆';
+      case 'correction': return '鉁忥笍';
+      case 'publish': return '馃摝';
+      case 'error': return '馃挜';
+      case 'milestone': return '馃弫';
+      case 'note': return '馃摑';
+      case 'user_feedback': return '馃挰';
+      default: return '馃搶';
     }
   }
 

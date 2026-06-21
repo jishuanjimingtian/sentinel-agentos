@@ -1,4 +1,4 @@
-{
+﻿{
   "compilerOptions": {
     "target": "ES2022",
     "module": "commonjs",
@@ -9,4 +9,6 @@
     "noEmit": true
   },
   "include": ["src/**/*", "tests/**/*"]
+}
+,  "noUnusedLocals": false
 }

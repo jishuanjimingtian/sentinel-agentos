@@ -1800,6 +1800,11 @@
         <span class="hero-chip">D1-D5 审批</span>
         <span class="hero-chip">Node ≥18</span>
       </div>
+      <div class="hero-views reveal" id="viewsDisplay" style="margin-top:20px;font-family:var(--mono);font-size:13px;color:var(--muted);display:flex;align-items:center;gap:6px;">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green);display:inline-block;"></span>
+        总访问: <strong id="viewsTotal" style="color:var(--cyan);">--</strong>
+        · 今日: <strong id="viewsToday" style="color:var(--green);">--</strong>
+      </div>
     </div>
     <div class="hero-visual reveal">
       <div class="hero-logo-wrap">
@@ -2512,6 +2517,35 @@
       copyBtn.textContent = '请手动复制';
     }
   });
+
+  // ---- 浏览量计数器 ----
+  (function() {
+    var totalEl = document.getElementById('viewsTotal');
+    var todayEl = document.getElementById('viewsToday');
+    if (!totalEl) return;
+
+    // 先显示已有数据，再尝试计数
+    fetch('https://www.sentinelagentos.com/api/views', { method: 'GET' })
+      .then(function(r) { return r.json(); })
+      .then(function(d) {
+        totalEl.textContent = d.total || 0;
+        if (todayEl) todayEl.textContent = d.today || 0;
+      })
+      .catch(function() { totalEl.textContent = '?'; });
+
+    // 尝试计数（重复浏览不记，由后端去重）
+    var visited = localStorage.getItem('aos_visited');
+    if (!visited) {
+      fetch('https://www.sentinelagentos.com/api/views', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          totalEl.textContent = d.total || 0;
+          if (todayEl) todayEl.textContent = d.today || 0;
+          if (d.counted) localStorage.setItem('aos_visited', '1');
+        })
+        .catch(function() {});
+    }
+  })();
 </script>
 </body>
 </html>

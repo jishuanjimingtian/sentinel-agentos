@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 
 /**
  * Sentinel AgentOS CLI
@@ -32,6 +32,9 @@ Usage:
   sentinel-agentos memory
   sentinel-agentos help
 
+  sentinel-agentos rule add <rule> [--source ctx]
+  sentinel-agentos rule delete <rule>
+  sentinel-agentos rule list [--min N]  (Default: 0.5)
 Quick start:
   sentinel-agentos init     # 安装 Sentinel Guard Skill → 自动启用全部功能
   sentinel-agentos status   # 查看质量报告
@@ -208,6 +211,51 @@ async function main() {
       break;
     }
 
+    case 'rule': {
+      const subCmd = rawArgs[1];
+      const flags = parseFlags(rawArgs.slice(2));
+      const minConf = parseFloat(flags.min ?? '0.5');
+      const source = flags.source ?? 'cli';
+
+      switch (subCmd) {
+        case 'add': {
+          const ruleText = rawArgs.slice(2).filter(a => !a.startsWith('--'))[0];
+          if (!ruleText) fatal('Usage: sentinel-agentos rule add <rule> [--source ctx]');
+          aos.memory.semantic.learnRule(ruleText, source);
+          console.log('Learned rule: ' + ruleText);
+          break;
+        }
+        case 'delete': {
+          const ruleText = rawArgs.slice(2).filter(a => !a.startsWith('--'))[0];
+          if (!ruleText) fatal('Usage: sentinel-agentos rule delete <rule>');
+          const allRules = aos.memory.semantic.getAllRules();
+          const match = allRules.find(r => r.rule.includes(ruleText));
+          if (match) {
+            match.confidence = 0; // Mark as forgotten
+            console.log('Deleted rule: ' + match.rule);
+          } else {
+            console.log('Rule not found');
+          }
+          break;
+        }
+        case 'list':
+        default: {
+          const rules = aos.memory.semantic.getRules(minConf);
+          if (rules.length === 0) {
+            console.log('(no rules found above ' + minConf + ' confidence)');
+          } else {
+            console.log('Learned Rules (min ' + minConf + '):');
+            for (const r of rules) {
+              const pct = Math.round(r.confidence * 100);
+              const lastRef = new Date(r.lastReferenced).toISOString().split('T')[0];
+              console.log('  [' + String(pct).padStart(3) + '%] ' + r.rule + '  (' + lastRef + ')');
+            }
+          }
+          break;
+        }
+      }
+      break;
+    }
     case 'memory': {
       const context = aos.injectContext();
       console.log(context || '(no memory context yet)');
