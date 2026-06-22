@@ -76,7 +76,7 @@ export interface ConfidenceResult {
     d5: D5Score;
   };
   /** 决策 */
-  decision: 'auto-approve' | 'confirm' | 'block';
+  decision: 'auto-approve' | 'silent-allow' | 'confirm' | 'strict-confirm' | 'block';
 }
 
 // ============================================================
@@ -317,11 +317,15 @@ export function computeConfidence(dimensions: {
   const totalWeight = WEIGHTS.d1 + WEIGHTS.d2 + WEIGHTS.d3 + WEIGHTS.d4 + WEIGHTS.d5;
   const confidence = Math.round(weighted / totalWeight);
 
-  let decision: 'auto-approve' | 'confirm' | 'block';
-  if (confidence >= 80) {
+  let decision: 'auto-approve' | 'silent-allow' | 'confirm' | 'strict-confirm' | 'block';
+  if (confidence >= 85) {
     decision = 'auto-approve';
-  } else if (confidence >= 40) {
+  } else if (confidence >= 70) {
+    decision = 'silent-allow';
+  } else if (confidence >= 45) {
     decision = 'confirm';
+  } else if (confidence >= 25) {
+    decision = 'strict-confirm';
   } else {
     decision = 'block';
   }
