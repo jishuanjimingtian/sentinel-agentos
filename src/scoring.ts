@@ -189,7 +189,7 @@ const TOOL_KEYWORDS: Record<string, string[]> = {
 export function scoreD3(toolName: string, lastAIMessage: string): D3Score {
   const keywords = TOOL_KEYWORDS[toolName];
   if (!keywords || !lastAIMessage) {
-    return { score: 50, matchedKeywords: 0, totalKeywords: 0 };
+    return { score: 80, matchedKeywords: 0, totalKeywords: 0 };
   }
 
   let matched = 0;

@@ -1,8 +1,8 @@
-/**
- * Sentinel AgentOS Middleware — Framework-Agnostic Wrapper
+﻿/**
+ * Sentinel AgentOS Middleware 鈥?Framework-Agnostic Wrapper
  *
  * Wraps any Agent's tool-call execution in Sentinel's Guard + Memory + Evaluator pipeline.
- * One-line integration — no changes to your Agent logic.
+ * One-line integration 鈥?no changes to your Agent logic.
  *
  * Usage:
  *   import { wrapAgent } from 'sentinel-agentos';
@@ -31,7 +31,7 @@ export interface WrappedAgent {
     profile: AgentProfile;
   };
 
-  /** Full pipeline: pre-check → execute callback → post-check */
+  /** Full pipeline: pre-check 鈫?execute callback 鈫?post-check */
   execute: <R>(
     toolName: string,
     params: Record<string, unknown>,
@@ -81,7 +81,7 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
 
       const allowed = preExec.riskScore.action !== 'deny';
       const reason = !allowed
-        ? `Risk score ${preExec.riskScore.score} → DENY (${preExec.riskScore.dimensions?.impact} impact)`
+        ? `Risk score ${preExec.riskScore.score} 鈫?DENY (${preExec.riskScore.dimensions?.impact} impact)`
         : undefined;
 
       return { preExec, snapshot, allowed, reason };
@@ -136,7 +136,7 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
         affectedFiles: opts?.affectedFiles,
       });
 
-      // v1.4.1: 信用联动决策 — 用 computeConfidence (含 credit boost) 覆写 deny 判定
+      // v1.4.1: 淇＄敤鑱斿姩鍐崇瓥 鈥?鐢?computeConfidence (鍚?credit boost) 瑕嗗啓 deny 鍒ゅ畾
       const confidence = aos.computeConfidence(
         toolName, params, preExec.riskScore, undefined, aid,
       );
@@ -145,12 +145,12 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
         aos.scoring.credit.recordOutcome(aid, false, true);
         return {
           allowed: false,
-          reason: `Confidence ${confidence.confidence} (L${aos.scoring.credit.getLevel(aid)}) → BLOCK`,
+          reason: `Confidence ${confidence.confidence} (L${aos.scoring.credit.getLevel(aid)}) 鈫?BLOCK`,
           profile: aos.getProfile(sid),
         };
       }
 
-      // Optionally warn for 'confirm' level — but in middleware we auto-proceed
+      // Optionally warn for 'confirm' level 鈥?but in middleware we auto-proceed
       // In production you'd hook this into your Agent's confirmation loop
       if (confidence.decision === 'confirm') {
         // Track that confirmation was required
@@ -164,7 +164,7 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
       try {
         result = await Promise.resolve(fn());
       } catch (err: any) {
-        // Execution failed — still record in audit
+        // Execution failed 鈥?still record in audit
         const ret = aos.completeExecution({
           sessionId: sid,
           agentId: aid,

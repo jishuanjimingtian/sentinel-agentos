@@ -200,4 +200,109 @@ export class BehaviorModel {
       this.entries = [];
     }
   }
+
+  // ============================================================
+  // Self-Evolution Rules (v1.4.2)
+  // ============================================================
+
+  /**
+   * 计算 allowRate — 被允许的操作比例（最近 N 条）
+   */
+  getAllowRate(toolName: string, recentCount: number = 50): number {
+    const relevant = this.entries.filter(e => e.toolName === toolName).slice(-recentCount);
+    if (relevant.length === 0) return 0.5;
+    const allowed = relevant.filter(e => e.confirmed || e.success).length;
+    return allowed / relevant.length;
+  }
+
+  /**
+   * 获取全局 allowRate
+   */
+  getGlobalAllowRate(recentCount: number = 100): number {
+    const recent = this.entries.slice(-recentCount);
+    if (recent.length === 0) return 0.5;
+    const allowed = recent.filter(e => e.confirmed || e.success).length;
+    return allowed / recent.length;
+  }
+
+  /**
+   * 运行自进化规则：
+   * - 30 天未使用的模式 → 置信度偏移归零
+   * - allowRate >= 80% 且 hits >= 10 → 额外放松 -5
+   * - allowRate < 20% 且 hits >= 5 → 额外收紧 +5
+   * - 全局 allowRate > 90% → 置信度底池提高 10
+   * - 全局 allowRate < 30% → 置信度底池降至 0
+   *
+   * @returns { evolved: number, floor: number, adjustments: Record<string, number> }
+   */
+  evolve(): { evolved: number; floor: number; adjustments: Record<string, number> } {
+    const now = Date.now();
+    const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+    let evolved = 0;
+
+    // --- 1. 清除 30 天未使用的旧条目 ---
+    const before = this.entries.length;
+    this.entries = this.entries.filter(e => (now - e.timestamp) < THIRTY_DAYS || (e.confirmed || e.success));
+    evolved = before - this.entries.length;
+
+    // --- 2. 按 toolName 计算 allowRate 偏移 ---
+    const adjustments: Record<string, number> = {};
+    const toolNames = [...new Set(this.entries.map(e => e.toolName))];
+
+    for (const tn of toolNames) {
+      const relevant = this.entries.filter(e => e.toolName === tn);
+      const hits = relevant.length;
+      if (hits < 5) continue; // 数据太少不做调整
+
+      const allowed = relevant.filter(e => e.confirmed || e.success).length;
+      const rate = allowed / hits;
+
+      let offset = 0;
+      if (rate >= 0.8 && hits >= 10) {
+        offset = -5; // 高频允许 → 放松
+      } else if (rate < 0.2 && hits >= 5) {
+        offset = 5;  // 高频拒绝 → 收紧
+      }
+
+      if (offset !== 0) {
+        adjustments[tn] = offset;
+      }
+    }
+
+    // --- 3. 全局 allowRate 决定置信度底池 (0-20) ---
+    const globalRate = this.getGlobalAllowRate(100);
+    let floor = 0;
+    if (globalRate > 0.9) {
+      floor = 10;
+    } else if (globalRate > 0.7) {
+      floor = 5;
+    } else if (globalRate < 0.3) {
+      floor = 0;
+    } else {
+      floor = 3;
+    }
+
+    this.save();
+    return { evolved, floor, adjustments };
+  }
+
+  /**
+   * 获取给定 tool 的置信度偏移值
+   */
+  getConfidenceOffset(toolName: string): number {
+    const globalAllow = this.getGlobalAllowRate(100);
+    let offset = 0;
+
+    // 全局松弛度
+    if (globalAllow > 0.9) offset -= 5;
+    else if (globalAllow < 0.3) offset += 5;
+
+    // 工具级 allowRate 偏移
+    const rate = this.getAllowRate(toolName, 50);
+    const hits = this.entries.filter(e => e.toolName === toolName).length;
+    if (rate >= 0.8 && hits >= 10) offset -= 5;
+    else if (rate < 0.2 && hits >= 5) offset += 5;
+
+    return offset;
+  }
 }

@@ -93,12 +93,12 @@ describe('D3 — 上下文相关性评分', () => {
     expect(scoreD3('write', 'completely unrelated content about weather').score).toBe(30);
   });
 
-  it('未知 tool 返回 50 分', () => {
-    expect(scoreD3('unknown_tool', 'do something').score).toBe(50);
+  it('未知 tool 返回 80 分（无上下文时不降权）', () => {
+    expect(scoreD3('unknown_tool', 'do something').score).toBe(80);
   });
 
-  it('空 message 返回 50 分', () => {
-    expect(scoreD3('write', '').score).toBe(50);
+  it('空 message 返回 80 分（无上下文时不降权）', () => {
+    expect(scoreD3('write', '').score).toBe(80);
   });
 
   it('matchedKeywords 和 totalKeywords 正确', () => {

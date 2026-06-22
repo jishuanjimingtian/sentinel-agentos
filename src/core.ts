@@ -1,4 +1,4 @@
-﻿import {
+import {
   AgentOSConfig,
   GuardConfig,
   Snapshot,

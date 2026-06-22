@@ -301,7 +301,19 @@ function initAgentOSAsync(): void {
 
       aosReady = true;
       deduplicateEpisodic();
-      log(`AgentOS v0.4.0 已加载 → ${workspaceRoot}`);
+
+      // B3: 触发自进化规则
+      try {
+        if (aos && typeof (aos as any).scoring?.behavior?.evolve === "function") {
+          const result = (aos as any).scoring.behavior.evolve();
+          if (result.evolved > 0) log(`行为模型自进化: ${result.evolved} 条过期清理, floor=${result.floor}`);
+        } else if (behaviorModel && typeof (behaviorModel as any).evolve === "function") {
+          const result = (behaviorModel as any).evolve();
+          if (result.evolved > 0) log(`行为模型自进化(备用): ${result.evolved} 条过期清理, floor=${result.floor}`);
+        }
+      } catch { /* non-critical */ }
+
+      log(`AgentOS v0.4.2 已加载 → ${workspaceRoot}`);
     } catch (e: unknown) {
       warn(`AgentOS 初始化失败: ${e instanceof Error ? e.message : String(e)}`);
       aos = null;
@@ -344,23 +356,26 @@ function computeConfidenceForTool(
   toolName: string,
   params: Record<string, unknown>,
   lastMsg: string,
+  agentId?: string,
 ): ConfidenceResult {
   const riskScore = aosReady && aos
     ? aos.guard.risk.evaluate(toolName, params)
     : { score: fallbackRiskScore(toolName, params), action: "confirm", dimensions: {} };
 
+  // 主路径：使用 AgentOS 实例方法（集成 D2 历史 + D5 频率 + 信用体系）
   if (aosReady && aos && typeof (aos as any).computeConfidence === "function") {
-    return (aos as any).computeConfidence(toolName, params, riskScore, lastMsg);
+    return (aos as any).computeConfidence(toolName, params, riskScore, lastMsg, agentId);
   }
 
-  // 备用：直接用核心包导出的函数
+  // 备用：直接用核心包导出的函数 + 本地 behavior/credit
   const d1 = scoreD1(riskScore as any);
-  const history = { exactMatchCount: 0, sameToolCount: 0, sameCategoryCount: 0 };
-  const d2 = scoreD2(toolName, params, history);
+  const stats = behaviorModel ? behaviorModel.getStats(toolName, params) : { exactMatchCount: 0, sameToolCount: 0, sameCategoryCount: 0 };
+  const d2 = scoreD2(toolName, params, stats);
   const d3 = scoreD3(toolName, lastMsg);
   const p = String(params?.path || params?.file || "");
   const d4 = scoreD4(p);
-  const d5 = scoreD5(new Date(), 0);
+  const freq = behaviorModel ? behaviorModel.getRecentFrequency(toolName) : 0;
+  const d5 = scoreD5(new Date(), freq);
   return computeConfidence({ d1, d2, d3, d4, d5 });
 }
 
@@ -374,6 +389,19 @@ function recordBehaviorForTool(
     (aos as any).recordBehavior(toolName, params, success, confirmed);
   } else if (behaviorModel) {
     behaviorModel.record({ toolName, params, success, confirmed });
+  }
+}
+
+function recordOutcomeForTool(
+  toolName: string,
+  params: Record<string, unknown>,
+  approved: boolean,
+  agentId?: string,
+): void {
+  if (aosReady && aos && typeof (aos as any).credit?.recordOutcome === "function") {
+    (aos as any).credit.recordOutcome(agentId || 'unknown', approved);
+  } else if (creditSystem) {
+    creditSystem.recordOutcome(agentId || 'unknown', approved);
   }
 }
 
@@ -447,15 +475,36 @@ const plugin = definePluginEntry({
 
     api.on("before_tool_call", async (event: ToolCallEvent) => {
       const { toolName, params } = event;
+
+      // B4: 熔断检查 — 如果熔断触发，直接放行所有操作
+      if (cbIsOpen()) {
+        warn(`before_tool_call: 熔断中，跳过 ${toolName} 的 Sentinel 检查`);
+        return;
+      }
+
+      // B5: WATCHDOG 命令/操作 — 放过所有无害操作
+      if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
+        const cmd = String((params as Record<string, unknown>).command);
+        if (isWatchdogCommand(cmd)) {
+          return;
+        }
+      }
+      // 非 exec 操作但属于已知低风险工具也放过（read 原文、sessions.list 等）
+      if (['read', 'memory_search', 'memory_get'].includes(toolName)) {
+        return;
+      }
+
       const p = (params as Record<string, unknown>)?.path || (params as Record<string, unknown>)?.file || "";
       const contextHint = lastAIMessage ? `\n\n📋 最近任务: ${lastAIMessage}` : "";
 
-      // v1.4 计算置信度
-      const confidenceResult = computeConfidenceForTool(toolName, params || {}, lastAIMessage);
+      const agentId = event?.agentId || 'main';
+
+      // v1.4 计算置信度（传入 agentId 以联动信用体系）
+      const confidenceResult = computeConfidenceForTool(toolName, params || {}, lastAIMessage, agentId);
       const { confidence, decision, dimensions } = confidenceResult;
       const { d1, d2, d3, d4, d5 } = dimensions;
 
-      // 记录行为
+      // 记录行为（confirmed = 用户最终批准，这里设为 block 以外）
       recordBehaviorForTool(toolName, params || {}, true, decision !== "block");
 
       // 置信度摘要（始终显示，即使没有 AI 消息）
@@ -463,22 +512,28 @@ const plugin = definePluginEntry({
         `📊 置信度: ${confidence}/100 (${decision})\n` +
         `  D1(命令风险): ${d1.score}/100\n` +
         `  D2(历史行为): ${d2.score}/100 (${d2.matchLevel})\n` +
-        `  D3(上下文): ${d3.score}/100 (${d3.matched}/${d3.total}关键词)\n` +
+        `  D3(上下文): ${d3.score}/100 (${d3.matchedKeywords}/${d3.totalKeywords}关键词)\n` +
         `  D4(路径): ${d4.score}/100 (${d4.pathType})\n` +
         `  D5(时间): ${d5.score}/100${d5.offHours ? " 🌙" : ""}`;
 
-      // auto-approve: 直接放行
-      if (decision === "auto-approve") {
+      // auto-approve / silent-allow: 直接放行
+      if (decision === "auto-approve" || decision === "silent-allow") {
         return;
       }
 
-      // block: 直接拦截
+      // block: 直接拦截（通过 requireApproval 显示完整置信分详情）
       if (decision === "block") {
-        const reason = `置信度过低 (${confidence}/100)  (D1=${d1.score} D2=${d2.score} D3=${d3.score} D4=${d4.score} D5=${d5.score})`;
-        return { block: true, blockReason: `🚫 Sentinel: ${reason}` };
+        return {
+          requireApproval: {
+            title: "🚫 Sentinel 置信度过低",
+            description: `${confSummary}\n\n操作: ${toolName}\n${contextHint}`,
+            severity: "critical" as const,
+            timeoutMs: 60_000,
+          },
+        };
       }
 
-      // confirm (40-79): 按规则弹窗
+      // confirm / strict-confirm: 按规则弹窗
       // ── 危险命令拦截 ──
       if (toolName === "exec" && (params as Record<string, unknown>)?.command) {
         const cmd = String((params as Record<string, unknown>).command);
@@ -544,13 +599,14 @@ const plugin = definePluginEntry({
         if (err) return { block: true, blockReason: `🚫 Sentinel: ${err}` };
       }
 
-      // 通用确认
+      // strict-confirm 和 confirm 走 Core 级别的弹窗
+      const isStrict = decision === "strict-confirm";
       return {
         requireApproval: {
-          title: "⚠️ 操作需要确认",
+          title: isStrict ? "🔴 操作需严格确认" : "⚠️ 操作需要确认",
           description: `${confSummary}\n\n操作: ${toolName}\n${contextHint}`,
-          severity: "warning" as const,
-          timeoutMs: 60_000,
+          severity: isStrict ? ("critical" as const) : ("warning" as const),
+          timeoutMs: isStrict ? 120_000 : 60_000,
           timeoutBehavior: "deny" as const,
         },
       };
@@ -608,6 +664,10 @@ const plugin = definePluginEntry({
             const isNoise = /^(echo|dir|ls|cat|type|Get-|Select-|Measure-|npx sentinel|openclaw |node -v|npm -v|git status|git log|git diff)/i.test(cmd.trim());
             if (!isNoise) aos.memory.episodic.record("tool_call", cmd, ["exec"], []);
           }
+
+          // 信用记录：工具执行完成（无论成功还是失败都算一次使用）
+          const agentId = event?.agentId || 'main';
+          recordOutcomeForTool(toolName, params || {}, !error, agentId);
 
           if (!error) aos.recordFeedback("user_used_result", "plugin_session");
           cbRecordSuccess();
