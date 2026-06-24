@@ -20,33 +20,33 @@ describe('creditToConfidenceBoost', () => {
 });
 
 describe('creditToConfidenceThresholds', () => {
-  it('L3: autoApprove=60, confirm=25', () => {
+  it('L3: autoApprove=50, confirm=20', () => {
     const t = creditToConfidenceThresholds(3);
-    expect(t.autoApproveMin).toBe(60);
-    expect(t.confirmMin).toBe(25);
+    expect(t.autoApproveMin).toBe(50);
+    expect(t.confirmMin).toBe(20);
   });
 
-  it('L2: autoApprove=80, confirm=40', () => {
+  it('L2: autoApprove=65, confirm=30', () => {
     const t = creditToConfidenceThresholds(2);
-    expect(t.autoApproveMin).toBe(80);
-    expect(t.confirmMin).toBe(40);
+    expect(t.autoApproveMin).toBe(65);
+    expect(t.confirmMin).toBe(30);
   });
 
-  it('L1: autoApprove=90, confirm=50', () => {
+  it('L1: autoApprove=70, confirm=35', () => {
     const t = creditToConfidenceThresholds(1);
-    expect(t.autoApproveMin).toBe(90);
+    expect(t.autoApproveMin).toBe(70);
+    expect(t.confirmMin).toBe(35);
+  });
+
+  it('L0: autoApprove=85, confirm=50', () => {
+    const t = creditToConfidenceThresholds(0);
+    expect(t.autoApproveMin).toBe(85);
     expect(t.confirmMin).toBe(50);
   });
 
-  it('L0: autoApprove=101 (永不), confirm=60', () => {
-    const t = creditToConfidenceThresholds(0);
-    expect(t.autoApproveMin).toBe(101);
-    expect(t.confirmMin).toBe(60);
-  });
-
-  it('超出范围回退到 L1', () => {
+  it('\u8d85\u51fa\u8303\u56f4\u56de\u9000\u5230 L1', () => {
     const t = creditToConfidenceThresholds(99 as any);
-    expect(t.autoApproveMin).toBe(90);
+    expect(t.autoApproveMin).toBe(70);
   });
 });
 
@@ -62,7 +62,7 @@ describe('CreditSystem', () => {
   // ==========================================
 
   it('新 agent 返回默认 L0', () => {
-    expect(credit.getLevel('new-agent')).toBe(0);
+    expect(credit.getLevel('new-agent')).toBe(1);
   });
 
   it('setLevel 可更改等级', () => {
@@ -71,7 +71,7 @@ describe('CreditSystem', () => {
   });
 
   it('defaultLevel 初始为 0', () => {
-    expect(credit.defaultLevel).toBe(0);
+    expect(credit.defaultLevel).toBe(1);
   });
 
   it('setDefaultLevel 可更改默认等级', () => {
@@ -93,21 +93,23 @@ describe('CreditSystem', () => {
     for (let i = 0; i < 10; i++) {
       credit.recordOutcome('test-agent', true, false);
     }
-    expect(credit.getLevel('test-agent')).toBe(2);
+    expect(credit.getLevel('test-agent')).toBe(3);
   });
 
   it('升级后计数器重置', () => {
     credit.setLevel('test-agent', 1);
-    // 9 次成功 — 还不够
-    for (let i = 0; i < 9; i++) {
+    // 5 次成功 → L1→L2 (5次升级阈值)
+    for (let i = 0; i < 5; i++) {
       credit.recordOutcome('test-agent', true, false);
     }
-    expect(credit.getLevel('test-agent')).toBe(1);
-    // 第 10 次
-    credit.recordOutcome('test-agent', true, false);
     expect(credit.getLevel('test-agent')).toBe(2);
-    // 再连续 10 次升级到 L3
-    for (let i = 0; i < 10; i++) {
+    // 再 5 次成功 → L2→L3 (又5次)
+    for (let i = 0; i < 5; i++) {
+      credit.recordOutcome('test-agent', true, false);
+    }
+    expect(credit.getLevel('test-agent')).toBe(3);
+    // 到 L3 后不再升级
+    for (let i = 0; i < 5; i++) {
       credit.recordOutcome('test-agent', true, false);
     }
     expect(credit.getLevel('test-agent')).toBe(3);
@@ -117,15 +119,17 @@ describe('CreditSystem', () => {
   // recordOutcome — 降级
   // ==========================================
 
-  it('连续 3 次拒绝从 L2 降到 L1', () => {
-    credit.setLevel('test-agent', 2);
+  it('连续 3 次拒绝从 L3 降到 L2', () => {
+    credit.setLevel('test-agent', 3);
     for (let i = 0; i < 3; i++) {
       credit.recordOutcome('test-agent', false, false);
     }
-    expect(credit.getLevel('test-agent')).toBe(1);
+    // 第 3 次拒绝触发降级（DENIAL_DOWNGRADE_THRESHOLD=3）
+    // 3次denial后 consecutivesDenials=3 >= 3 → 降级
+    expect(credit.getLevel('test-agent')).toBe(2);
   });
 
-  it('被 block 一次直接降 2 级', () => {
+  it('被 block 一次从 L3 降到 L1', () => {
     credit.setLevel('test-agent', 3);
     credit.recordOutcome('test-agent', false, true);
     expect(credit.getLevel('test-agent')).toBe(1);
@@ -137,10 +141,10 @@ describe('CreditSystem', () => {
     expect(credit.getLevel('test-agent')).toBe(0);
   });
 
-  it('L3 被 block 降到 L1', () => {
-    credit.setLevel('test-agent', 3);
+  it('L2 被 block 降到 L0', () => {
+    credit.setLevel('test-agent', 2);
     credit.recordOutcome('test-agent', false, true);
-    expect(credit.getLevel('test-agent')).toBe(1);
+    expect(credit.getLevel('test-agent')).toBe(0);
   });
 
   // ==========================================
@@ -223,7 +227,13 @@ describe('CreditSystem', () => {
       credit.recordOutcome('test-agent', true, false);
       credit.recordOutcome('test-agent', false, false);
     }
-    // alternating — no streaks ≥ 3 denials or ≥ 10 successes
+    // alternating — no streaks ≥ 3 denials or ≥ 5 successes
+    // But the denial resets consecutiveSuccesses, and success resets consecutiveDenials
+    // So no upgrades happen, but each denial resets the streak
+    // Starting at L2 with alternating: no 5 consecutive successes = no upgrade
+    // However each 'false' resets consecutiveSuccesses, so never triggers upgrade
+    // Each 'true' resets consecutiveDenials, so never triggers downgrade
+    // Level should remain 2
     expect(credit.getLevel('test-agent')).toBe(2);
   });
 });

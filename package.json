@@ -1,6 +1,6 @@
 {
   "name": "sentinel-agentos",
-  "version": "0.4.1",
+  "version": "0.4.5",
   "description": "Sentinel AgentOS — 确定性 Guard 层 + 分层记忆 + 自动评估，让任何 Agent 变得可靠、可审计、可改进",
   "keywords": [
     "agent",
@@ -30,7 +30,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc && npx copyfiles -f src/dashboard.html dist/ && npx copyfiles -u 1 \"assets/**/*\" dist/",
+    "build": "tsc && npx copyfiles -f src/dashboard.html dist/ && npx copyfiles -u 1 \"assets/**/*\" dist/assets/",
     "start": "node dist/cli.js server --port 3300",
     "dev": "tsc --watch",
     "test": "jest",

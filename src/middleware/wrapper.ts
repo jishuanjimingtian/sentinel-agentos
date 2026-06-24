@@ -24,7 +24,14 @@ export interface WrappedAgent {
   };
 
   /** Call this after every tool execution */
-  postCheck: (toolName: string, params: Record<string, unknown>, result: unknown, snapshot: any, startTime: number) => {
+  postCheck: (toolName: string, params: Record<string, unknown>, result: unknown, snapshot: any, startTime: number, opts?: {
+    retryCount?: number;
+    wasSelfCorrected?: boolean;
+    hadTimeout?: boolean;
+    userAccepted?: boolean;
+    userProvidedEdit?: boolean;
+    resultWasUsed?: boolean;
+  }) => {
     runtime: any;
     postExec: PostExecMetrics;
     audit: AuditEntry;
@@ -61,10 +68,39 @@ export interface WrappedAgent {
 
   /** Raw AgentOS instance for advanced use */
   readonly aos: AgentOS;
+
+  /** 🚀 v1.5.0 白名单 */
+  readonly whitelist: {
+    addRule: (rule: { type: 'exact' | 'tool' | 'pattern' | 'command'; tool: string; pattern?: string; label?: string }) => any;
+    removeRule: (id: string) => boolean;
+    getRules: () => any[];
+    isWhitelisted: (tool: string, params: Record<string, unknown>) => boolean;
+    clear: () => void;
+  };
 }
 
 export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
   const aos = new AgentOS(config);
+
+  // 🚀 v1.5.0 默认白名单 — 安全操作直接跳过审批
+  aos.whitelist.addRule({ type: 'tool', tool: 'read', label: '读操作默认放行' });
+  aos.whitelist.addRule({ type: 'tool', tool: 'web_search', label: '搜索操作默认放行' });
+  aos.whitelist.addRule({ type: 'tool', tool: 'web_fetch', label: '抓取操作默认放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'npm ', label: 'npm 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'node ', label: 'node 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'tsc ', label: 'tsc 编译放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'cd ', label: 'cd 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'ls', label: 'ls 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'dir', label: 'dir 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'cat ', label: 'cat 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'type ', label: 'type 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'echo ', label: 'echo 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'which ', label: 'which 命令放行' });
+  aos.whitelist.addRule({ type: 'command', tool: 'exec', pattern: 'where ', label: 'where 命令放行' });
+  aos.whitelist.addRule({ type: 'pattern', tool: 'exec', pattern: '^git (status|diff|log|branch|checkout [^-]|add|commit|pull|fetch|clone|merge|rebase [^-]|stash)', label: 'git 安全操作放行' });
+  aos.whitelist.addRule({ type: 'pattern', tool: 'write', pattern: 'src[/\\\\].*\\.(ts|js|tsx|jsx|css|scss|html|json|md)$', label: '源码写入放行' });
+  aos.whitelist.addRule({ type: 'pattern', tool: 'write', pattern: 'tests?[/\\\\].*\\.(ts|js|tsx|jsx)$', label: '测试文件写入放行' });
+  aos.whitelist.addRule({ type: 'pattern', tool: 'edit', pattern: 'src[/\\\\].*\\.(ts|js|tsx|jsx|css|scss|html|json|md)$', label: '源码编辑放行' });
 
   let sessionCounter = 0;
 
@@ -87,7 +123,14 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
       return { preExec, snapshot, allowed, reason };
     },
 
-    postCheck(toolName, params, result, snapshot, startTime) {
+    postCheck(toolName, params, result, snapshot, startTime, opts?: {
+      retryCount?: number;
+      wasSelfCorrected?: boolean;
+      hadTimeout?: boolean;
+      userAccepted?: boolean;
+      userProvidedEdit?: boolean;
+      resultWasUsed?: boolean;
+    }) {
       const ret = aos.completeExecution({
         sessionId: `wrapped_${sessionCounter}`,
         agentId: 'wrapped_agent',
@@ -97,12 +140,12 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
         snapshot,
         startTime,
         endTime: Date.now(),
-        retryCount: 0,
-        wasSelfCorrected: false,
-        hadTimeout: false,
-        userAccepted: true,
-        userProvidedEdit: false,
-        resultWasUsed: false,
+        retryCount: opts?.retryCount ?? 0,
+        wasSelfCorrected: opts?.wasSelfCorrected ?? false,
+        hadTimeout: opts?.hadTimeout ?? false,
+        userAccepted: opts?.userAccepted ?? true,
+        userProvidedEdit: opts?.userProvidedEdit ?? false,
+        resultWasUsed: opts?.resultWasUsed ?? false,
       });
 
       return {
@@ -125,6 +168,17 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
       // Memory context at session start
       if (sessionCounter === 1) {
         aos.injectContext();
+      }
+
+      // 🚀 v1.5.0 白名单：跳过全部审批链路
+      if (aos.whitelist.isWhitelisted(toolName, params)) {
+        let result: R;
+        try {
+          result = await Promise.resolve(fn());
+        } catch (err: any) {
+          return { allowed: true, result: undefined as any, reason: `Execution failed: ${err.message}` };
+        }
+        return { allowed: true, result };
       }
 
       // Pre-check
@@ -236,6 +290,15 @@ export function wrapAgent(config?: Partial<AgentOSConfig>): WrappedAgent {
 
     healthCheck(full?: boolean) {
       return aos.healthCheck(full as any);
+    },
+
+    // 🚀 v1.5.0 白名单
+    whitelist: {
+      addRule: (rule) => aos.whitelist.addRule(rule),
+      removeRule: (id) => aos.whitelist.removeRule(id),
+      getRules: () => aos.whitelist.getRules(),
+      isWhitelisted: (tool, params) => aos.whitelist.isWhitelisted(tool, params),
+      clear: () => aos.whitelist.clear(),
     },
   };
 

@@ -9,6 +9,7 @@ import {
   HealthCheckReport,
 } from './types';
 import { SchemaGate } from './guard/schema-gate';
+import { Whitelist } from './whitelist';
 import { RiskGate } from './guard/risk-gate';
 import { SnapshotGate, VerifyGate } from './guard/snapshot-verify';
 import { AuditLog } from './guard/audit-log';
@@ -79,6 +80,9 @@ export class AgentOS {
     credit: CreditSystem;
   };
 
+  // 🚀 v1.5.0 白名单
+  readonly whitelist: Whitelist;
+
   constructor(config?: Partial<AgentOSConfig>) {
     this.config = {
       workspaceRoot: process.cwd(),
@@ -140,6 +144,11 @@ export class AgentOS {
     credit.enablePersistence(this.config.workspaceRoot!);
 
     this.scoring = { behavior, credit };
+
+    // --- 🚀 v1.5.0 白名单 Init ---
+    const whitelist = new Whitelist();
+    whitelist.enablePersistence(this.config.workspaceRoot!);
+    this.whitelist = whitelist;
   }
 
   /**

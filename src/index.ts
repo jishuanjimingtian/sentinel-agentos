@@ -27,6 +27,9 @@ export type { AgentProfile } from './evaluator/profiler';
 export { AgentOSAPI } from './api';
 
 // --- v1.4 智能审批 ---
+export { Whitelist } from './whitelist';
+export type { WhitelistRule, WhitelistRuleType } from './whitelist';
+
 export { BehaviorModel } from './behavior-model';
 export type { BehaviorEntry, BehaviorStats } from './behavior-model';
 export { CreditSystem, creditToConfidenceBoost, creditToConfidenceThresholds } from './credit';

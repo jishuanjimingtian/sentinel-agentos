@@ -57,8 +57,8 @@ describe('信用体系联动决策 (v1.4.1)', () => {
     // 构建一个刚好触发 confirm 的场景: moderate risk + 新操作
     const result = aos.computeConfidence(
       'exec',
-      { command: 'rm -rf /tmp' },
-      mkRisk(4.0),
+      { command: 'format c: /q /y' },
+      mkRisk(6.5),
       '',
       TEST_AGENT,
     );
@@ -156,8 +156,9 @@ describe('信用体系联动决策 (v1.4.1)', () => {
   it('连续成功 → 信用升级', () => {
     aos.scoring.credit.setLevel(TEST_AGENT, 1); // start at L1
 
-    // 连续 10 次成功 (allowed=true, wasBlocked=false)
-    for (let i = 0; i < 10; i++) {
+    // 连续 6 次成功 (SUCCESS_UPGRADE_THRESHOLD=5)
+    // 5 次 L1→L2，6 次时还在 L2
+    for (let i = 0; i < 6; i++) {
       aos.scoring.credit.recordOutcome(TEST_AGENT, true, false);
     }
 

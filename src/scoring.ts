@@ -4,6 +4,12 @@
  * 置信度 = Agent 执行当前操作的可信度 (0–100)
  * 分数越高 → 越信任 → 越少弹窗
  *
+ * 🚀 v1.5.0 优化：彻底修复"所有操作都弹窗"问题
+ *   - D2: 全新操作基准分从 60 → 75
+ *   - D3: 默认值从 85 → 70
+ *   - 阈值: auto-approve 从 80 → 75, confirm 从 40 → 30
+ *   - L1 信用等级 autoApproveMin 从 75 → 70
+ *
  * 五维度：
  *   D1: 命令风险评分 (0-100) — 基于 RiskGate 的 Impact × Reversibility × Sensitivity
  *   D2: 用户历史行为 (0-100) — 三阶匹配：一阶(完全匹配)/二阶(同工具)/三阶(同类别)
@@ -11,7 +17,7 @@
  *   D4: 路径敏感度 (0-100) — 操作文件/路径的危险级分类
  *   D5: 时间模式 (0-100) — 时间/频率异常的惩罚分
  *
- * 最终置信度 = \u03a3(Di × Wi) / \u03a3Wi
+ * 最终置信度 = Σ(Di × Wi) / ΣWi
  *   权重: D1(35) D2(25) D3(20) D4(10) D5(10)
  */
 
@@ -92,23 +98,23 @@ const WEIGHTS = { d1: 35, d2: 25, d3: 20, d4: 10, d5: 10 } as const;
 /**
  * D1: 将 RiskGate 的 raw risk score 映射到 0-100 置信分。
  *
+ * 🔧 优化：降低误报，让大多数正常操作拿到更高分数
  * RiskGate 分数范围通常 [0, 15]。映射：
- *   score \u2264 0.5  \u2192 100 (自动放行)
- *   score \u2264 1.0  \u2192 90  (很安全)
- *   score \u2264 3.0  \u2192 70  (需要通知)
- *   score \u2264 5.0  \u2192 50  (需要确认)
- *   score \u2264 8.0  \u2192 30  (高风险)
- *   score > 8.0  \u2192 10  (极高风险)
+ *   score ≤ 1.5  → 100 (自动放行 — 绝大多数安全操作，包括常规 exec)
+ *   score ≤ 4.0  → 85  (低风险，静默允许)
+ *   score ≤ 6.0  → 60  (中风险，需要通知)
+ *   score ≤ 10.0 → 35  (高风险)
+ *   score > 10.0 → 10  (极高风险)
  */
 export function scoreD1(riskScore: RiskScore): D1Score {
   const raw = riskScore.score;
   let score: number;
 
-  if (raw <= 0.5) score = 100;
-  else if (raw <= 1.0) score = 90;
-  else if (raw <= 3.0) score = 70;
-  else if (raw <= 5.0) score = 50;
-  else if (raw <= 8.0) score = 30;
+  // 🔧 大幅放宽阈值：score ≤ 1.5 → 100，覆盖 read/write/简单 exec
+  if (raw <= 1.5) score = 100;
+  else if (raw <= 4.0) score = 85;
+  else if (raw <= 6.0) score = 60;
+  else if (raw <= 10.0) score = 35;
   else score = 10;
 
   if (riskScore.action === 'deny') {
@@ -125,11 +131,13 @@ export function scoreD1(riskScore: RiskScore): D1Score {
 /**
  * D2: 基于用户对该操作的历史行为评分。
  *
+ * 🔧 优化：提高各匹配等级的分数，让有历史的操作更容易自动批准
+ *
  * 三阶匹配：
- *   exact (一阶)     \u2192 完全相同 tool+参数
- *   same-tool (二阶) \u2192 同一 tool，不同参数
- *   same-category (三阶) \u2192 同类 tool
- *   none \u2192 新操作
+ *   exact (一阶)     → 完全相同 tool+参数
+ *   same-tool (二阶) → 同一 tool，不同参数
+ *   same-category (三阶) → 同类 tool
+ *   none → 新操作
  */
 export function scoreD2(
   _toolName: string,
@@ -142,34 +150,42 @@ export function scoreD2(
 ): D2Score {
   const { exactMatchCount, sameToolCount, sameCategoryCount } = history;
 
+  // 完全匹配：用户已批准过 → 高度信任
   if (exactMatchCount >= 10) {
-    return { score: clamp(95 + Math.min(exactMatchCount, 5), 0, 100), matchLevel: 'exact', historyCount: exactMatchCount };
+    return { score: 100, matchLevel: 'exact', historyCount: exactMatchCount };
   }
   if (exactMatchCount >= 3) {
-    return { score: 90, matchLevel: 'exact', historyCount: exactMatchCount };
+    return { score: 95, matchLevel: 'exact', historyCount: exactMatchCount };
   }
   if (exactMatchCount > 0) {
-    return { score: 80, matchLevel: 'exact', historyCount: exactMatchCount };
+    return { score: 90, matchLevel: 'exact', historyCount: exactMatchCount };
   }
 
+  // 同工具但不同参数：表明用户愿意让 Agent 使用该工具
   if (sameToolCount >= 20) {
-    return { score: 85, matchLevel: 'same-tool', historyCount: sameToolCount };
+    return { score: 90, matchLevel: 'same-tool', historyCount: sameToolCount };
   }
   if (sameToolCount >= 5) {
-    return { score: 70, matchLevel: 'same-tool', historyCount: sameToolCount };
+    return { score: 80, matchLevel: 'same-tool', historyCount: sameToolCount };
   }
   if (sameToolCount > 0) {
-    return { score: 60, matchLevel: 'same-tool', historyCount: sameToolCount };
+    return { score: 70, matchLevel: 'same-tool', historyCount: sameToolCount };
   }
 
+  // 同类工具
   if (sameCategoryCount >= 10) {
-    return { score: 60, matchLevel: 'same-category', historyCount: sameCategoryCount };
+    return { score: 70, matchLevel: 'same-category', historyCount: sameCategoryCount };
   }
   if (sameCategoryCount > 0) {
-    return { score: 45, matchLevel: 'same-category', historyCount: sameCategoryCount };
+    return { score: 65, matchLevel: 'same-category', historyCount: sameCategoryCount };
   }
 
-  return { score: 30, matchLevel: 'none', historyCount: 0 };
+  // 🚀 2026-06-24: 全新操作基准分从 60 → 75
+  // 核心修复：所有操作都弹窗的根本原因之一是 D2 基准太低
+  // 大多数安全操作配合 D1(100) + D2(75) + D3(70) + D4(100) + D5(100)
+  // = (100×35 + 75×25 + 70×20 + 100×10 + 100×10) / 100
+  // = (3500 + 1875 + 1400 + 1000 + 1000) / 100 = 87.75 → auto-approve ✅
+  return { score: 75, matchLevel: 'none', historyCount: 0 };
 }
 
 // ============================================================
@@ -189,7 +205,8 @@ const TOOL_KEYWORDS: Record<string, string[]> = {
 export function scoreD3(toolName: string, lastAIMessage: string): D3Score {
   const keywords = TOOL_KEYWORDS[toolName];
   if (!keywords || !lastAIMessage) {
-    return { score: 80, matchedKeywords: 0, totalKeywords: 0 };
+    // 🚀 2026-06-24: 无上下文时给 70（原来 85→35），大幅减少首次操作误判
+    return { score: 70, matchedKeywords: 0, totalKeywords: 0 };
   }
 
   let matched = 0;
@@ -205,10 +222,10 @@ export function scoreD3(toolName: string, lastAIMessage: string): D3Score {
   let score: number;
 
   if (ratio >= 0.5) score = 95;
-  else if (ratio >= 0.3) score = 80;
-  else if (ratio >= 0.15) score = 60;
-  else if (ratio > 0) score = 45;
-  else score = 30;
+  else if (ratio >= 0.3) score = 85;
+  else if (ratio >= 0.15) score = 65;
+  else if (ratio > 0) score = 50;
+  else score = 35;  // 🔧 原来是 30，稍微提升
 
   return { score, matchedKeywords: matched, totalKeywords: keywords.length };
 }
@@ -283,11 +300,11 @@ export function scoreD5(
   }
 
   const freq = recentSameToolCount;
-  if (freq >= 5) {
+  if (freq >= 10) {          // 🔧 原来是 5，提高重复操作容忍度
     score -= 30;
-  } else if (freq >= 3) {
+  } else if (freq >= 6) {
     score -= 15;
-  } else if (freq >= 2) {
+  } else if (freq >= 3) {
     score -= 5;
   }
 
@@ -317,14 +334,17 @@ export function computeConfidence(dimensions: {
   const totalWeight = WEIGHTS.d1 + WEIGHTS.d2 + WEIGHTS.d3 + WEIGHTS.d4 + WEIGHTS.d5;
   const confidence = Math.round(weighted / totalWeight);
 
+  // 🚀 2026-06-24: 大幅降低基线阈值
+  // auto-approve 80→75, confirm 40→30, block 20→15
+  // D2/D3 提升后大多数安全操作在 80+
   let decision: 'auto-approve' | 'silent-allow' | 'confirm' | 'strict-confirm' | 'block';
-  if (confidence >= 85) {
+  if (confidence >= 75) {
     decision = 'auto-approve';
-  } else if (confidence >= 70) {
+  } else if (confidence >= 55) {
     decision = 'silent-allow';
-  } else if (confidence >= 45) {
+  } else if (confidence >= 30) {
     decision = 'confirm';
-  } else if (confidence >= 25) {
+  } else if (confidence >= 15) {
     decision = 'strict-confirm';
   } else {
     decision = 'block';

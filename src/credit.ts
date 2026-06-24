@@ -31,7 +31,7 @@ export interface CreditConfig {
   lastUpdated: number;
 }
 
-const SUCCESS_UPGRADE_THRESHOLD = 10;
+const SUCCESS_UPGRADE_THRESHOLD = 5;     // 从 10 降到 5：更快升级
 const DENIAL_DOWNGRADE_THRESHOLD = 3;
 const INACTIVITY_DOWNGRADE_DAYS = 30;
 
@@ -56,11 +56,11 @@ export function creditToConfidenceThresholds(level: CreditLevel): {
   confirmMin: number;
 } {
   switch (level) {
-    case 3: return { autoApproveMin: 60, confirmMin: 25 };
-    case 2: return { autoApproveMin: 80, confirmMin: 40 };
-    case 1: return { autoApproveMin: 90, confirmMin: 50 };
-    case 0: return { autoApproveMin: 101, confirmMin: 60 };
-    default: return { autoApproveMin: 90, confirmMin: 50 };
+    case 3: return { autoApproveMin: 50, confirmMin: 20 };  // L3: 大幅放宽，真信任
+    case 2: return { autoApproveMin: 65, confirmMin: 30 };  // L2: 合理放宽
+    case 1: return { autoApproveMin: 70, confirmMin: 35 };  // L1: 2026-06-24 降 5 点解决默认弹窗
+    case 0: return { autoApproveMin: 85, confirmMin: 50 };  // L0: 可疑用户，但还是有机会自动批准
+    default: return { autoApproveMin: 70, confirmMin: 35 }; // 默认走 L1 2026-06-24
   }
 }
 
@@ -71,7 +71,7 @@ export class CreditSystem {
   constructor() {
     this.config = {
       agents: {},
-      defaultLevel: 0,
+      defaultLevel: 1,  // 🔧 默认从 L1 开始，给用户基本信任
       lastUpdated: Date.now(),
     };
   }

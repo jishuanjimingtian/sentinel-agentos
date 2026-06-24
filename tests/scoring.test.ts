@@ -22,24 +22,24 @@ describe('D1 — 命令风险评分', () => {
     expect(scoreD1(risk(0.3)).score).toBe(100);
   });
 
-  it('raw <= 1.0 返回 90 分', () => {
-    expect(scoreD1(risk(0.8)).score).toBe(90);
+  it('raw <= 1.5 返回 100 分', () => {
+    expect(scoreD1(risk(0.8)).score).toBe(100);
   });
 
-  it('raw <= 3.0 返回 70 分', () => {
-    expect(scoreD1(risk(2)).score).toBe(70);
+  it('raw <= 4.0 返回 85 分', () => {
+    expect(scoreD1(risk(2)).score).toBe(85);
   });
 
-  it('raw <= 5.0 返回 50 分', () => {
-    expect(scoreD1(risk(4)).score).toBe(50);
+  it('raw <= 6.0 返回 60 分', () => {
+    expect(scoreD1(risk(5)).score).toBe(60);
   });
 
-  it('raw <= 8.0 返回 30 分', () => {
-    expect(scoreD1(risk(6.5)).score).toBe(30);
+  it('raw <= 10.0 返回 35 分', () => {
+    expect(scoreD1(risk(6.5)).score).toBe(35);
   });
 
-  it('raw > 8.0 且非 deny 返回 10 分', () => {
-    expect(scoreD1(risk(10, 'confirm')).score).toBe(10);
+  it('raw > 10.0 且非 deny 返回 10 分', () => {
+    expect(scoreD1(risk(12, 'confirm')).score).toBe(10);
   });
 
   it('deny 操作分数不超过 5', () => {
@@ -58,23 +58,23 @@ describe('D2 — 用户历史行为评分', () => {
     expect(r.matchLevel).toBe('exact');
   });
 
-  it('exact 3-9 次返回 90 分', () => {
-    expect(scoreD2('write', {}, { exactMatchCount: 5, sameToolCount: 10, sameCategoryCount: 20 }).score).toBe(90);
+  it('exact 3-9 次返回 95 分', () => {
+    expect(scoreD2('write', {}, { exactMatchCount: 5, sameToolCount: 10, sameCategoryCount: 20 }).score).toBe(95);
   });
 
-  it('exact 1-2 次返回 80 分', () => {
-    expect(scoreD2('write', {}, { exactMatchCount: 1, sameToolCount: 0, sameCategoryCount: 0 }).score).toBe(80);
+  it('exact 1-2 次返回 90 分', () => {
+    expect(scoreD2('write', {}, { exactMatchCount: 1, sameToolCount: 0, sameCategoryCount: 0 }).score).toBe(90);
   });
 
-  it('same-tool >= 20 次返回 85 分', () => {
+  it('same-tool >= 20 次返回 90 分', () => {
     const r = scoreD2('write', {}, { exactMatchCount: 0, sameToolCount: 25, sameCategoryCount: 0 });
-    expect(r.score).toBe(85);
+    expect(r.score).toBe(90);
     expect(r.matchLevel).toBe('same-tool');
   });
 
-  it('无历史返回 30 分 none', () => {
+  it('无历史返回 75 分 none', () => {
     const r = scoreD2('write', {}, { exactMatchCount: 0, sameToolCount: 0, sameCategoryCount: 0 });
-    expect(r.score).toBe(30);
+    expect(r.score).toBe(75);
     expect(r.matchLevel).toBe('none');
   });
 });
@@ -89,16 +89,16 @@ describe('D3 — 上下文相关性评分', () => {
     expect(r.score).toBeGreaterThanOrEqual(30);
   });
 
-  it('无匹配返回 30 分', () => {
-    expect(scoreD3('write', 'completely unrelated content about weather').score).toBe(30);
+  it('无匹配返回 35 分', () => {
+    expect(scoreD3('write', 'completely unrelated content about weather').score).toBe(35);
   });
 
-  it('未知 tool 返回 80 分（无上下文时不降权）', () => {
-    expect(scoreD3('unknown_tool', 'do something').score).toBe(80);
+  it('未知 tool 返回 70 分（无上下文时不降权）', () => {
+    expect(scoreD3('unknown_tool', 'do something').score).toBe(70);
   });
 
-  it('空 message 返回 80 分（无上下文时不降权）', () => {
-    expect(scoreD3('write', '').score).toBe(80);
+  it('空 message 返回 70 分（无上下文时不降权）', () => {
+    expect(scoreD3('write', '').score).toBe(70);
   });
 
   it('matchedKeywords 和 totalKeywords 正确', () => {
@@ -152,14 +152,14 @@ describe('D5 — 时间模式评分', () => {
     expect(r.isOffHours).toBe(true);
   });
 
-  it('频率 >= 5 扣 30 分', () => {
+  it('频率 >= 3 扣 5 分', () => {
     const r = scoreD5(new Date('2026-06-19T14:00:00'), 5);
-    expect(r.score).toBe(70);
+    expect(r.score).toBe(95);
     expect(r.frequency).toBe(5);
   });
 
   it('非工作时间 + 高频叠加扣分', () => {
-    expect(scoreD5(new Date('2026-06-19T23:30:00'), 5).score).toBe(50);
+    expect(scoreD5(new Date('2026-06-19T23:30:00'), 5).score).toBe(75);
   });
 
   it('分数下限为 0', () => {
@@ -189,24 +189,24 @@ describe('computeConfidence — 综合评分', () => {
     const r = computeConfidence({
       d1: { score: 5, rawRiskScore: 12, action: 'deny' },
       d2: { score: 30, matchLevel: 'none', historyCount: 0 },
-      d3: { score: 30, matchedKeywords: 0, totalKeywords: 0 },
+      d3: { score: 10, matchedKeywords: 0, totalKeywords: 0 },
       d4: { score: 5, dangerLevel: 'critical', pathType: '密钥文件' },
       d5: { score: 0, isOffHours: true, frequency: 100 },
     });
-    expect(r.confidence).toBeLessThan(40);
+    expect(r.confidence).toBeLessThan(15);
     expect(r.decision).toBe('block');
   });
 
   it('中等分数返回 confirm', () => {
     const r = computeConfidence({
-      d1: { score: 60, rawRiskScore: 4.0, action: 'confirm' },
-      d2: { score: 60, matchLevel: 'same-tool', historyCount: 5 },
-      d3: { score: 60, matchedKeywords: 0, totalKeywords: 0 },
-      d4: { score: 100, dangerLevel: 'safe', pathType: '无路径操作' },
-      d5: { score: 80, isOffHours: false, frequency: 0 },
+      d1: { score: 40, rawRiskScore: 5.5, action: 'confirm' },
+      d2: { score: 40, matchLevel: 'none', historyCount: 0 },
+      d3: { score: 40, matchedKeywords: 0, totalKeywords: 0 },
+      d4: { score: 60, dangerLevel: 'low', pathType: '未知路径' },
+      d5: { score: 50, isOffHours: true, frequency: 1 },
     });
     expect(r.confidence).toBeGreaterThanOrEqual(40);
-    expect(r.confidence).toBeLessThan(80);
+    expect(r.confidence).toBeLessThan(55);
     expect(r.decision).toBe('confirm');
   });
 
