@@ -117,8 +117,11 @@ export function scoreD1(riskScore: RiskScore): D1Score {
   else if (raw <= 10.0) score = 35;
   else score = 10;
 
+  // 🚀 v1.5.0: deny → 封顶 5；confirm → 封顶 50（危险命令即使分数不超高也不 auto-approve）
   if (riskScore.action === 'deny') {
     score = Math.min(score, 5);
+  } else if (riskScore.action === 'confirm') {
+    score = Math.min(score, 30);
   }
 
   return { score, rawRiskScore: raw, action: riskScore.action };

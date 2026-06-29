@@ -369,6 +369,17 @@ export class AgentOS {
 
     // 用信用等级覆盖默认阈值
     const adjustedConfidence = this.clamp0to100(result.confidence + boost);
+
+    // 🚀 v1.5.0: RiskGate 判定 deny → 无论分数如何直接 block
+    if ((riskScore as any).action === 'deny') {
+      return {
+        ...result,
+        confidence: adjustedConfidence,
+        decision: 'block',
+        dimensions: { ...result.dimensions, creditBoost: boost, creditLevel } as any,
+      };
+    }
+
     let decision: 'auto-approve' | 'confirm' | 'block';
     if (adjustedConfidence >= thresholds.autoApproveMin) {
       decision = 'auto-approve';

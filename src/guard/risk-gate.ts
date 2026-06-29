@@ -40,7 +40,7 @@ const DEFAULT_ERROR_RATES: Record<string, number> = {
 const DANGER_PATTERNS: Array<{ regex: RegExp; impact: ImpactLevel; reversibility: number; sensitivity: SensitivityLevel }> = [
   { regex: new RegExp('rm\\s+-rf\\s+(?:[/~]|\\*)', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
   { regex: new RegExp('sudo\\s+rm\\s+-rf', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
-  { regex: new RegExp('del\\s+[/][fsq]\\s+[a-z]:[\\\\]?', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('del\\s+/[fsq]\\s+/s\\s+[a-z]:', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
   { regex: new RegExp('\\bmkfs\\b', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
   { regex: new RegExp('\\bdd\\s+if=', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
   { regex: new RegExp('chmod\\s+777\\s+-R', 'i'), impact: 'system', reversibility: 0.1, sensitivity: 'high' },
@@ -49,6 +49,10 @@ const DANGER_PATTERNS: Array<{ regex: RegExp; impact: ImpactLevel; reversibility
   { regex: /git\s+push\s+[\w\s-]*--force/i, impact: 'project', reversibility: 0.2, sensitivity: 'high' },
   { regex: /git\s+reset\s+--hard/i, impact: 'project', reversibility: 0.3, sensitivity: 'high' },
   { regex: /npm\s+unpublish\b/i, impact: 'project', reversibility: 0.0, sensitivity: 'high' },
+  { regex: new RegExp('format\\s+[a-z]:', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('(?:rd|rmdir)\\s+/s\\s+/q', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'critical' },
+  { regex: new RegExp('curl\\s+.*\\|\\s*(?:ba)?sh', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'high' },
+  { regex: new RegExp('wget\\s+.*-O\\s*-\\s*\\|', 'i'), impact: 'system', reversibility: 0.0, sensitivity: 'high' },
   { regex: /\.(?:env|key|pem|p12|pfx|jks|keystore)/i, impact: 'workspace', reversibility: 0.5, sensitivity: 'critical' },
 ];
 
