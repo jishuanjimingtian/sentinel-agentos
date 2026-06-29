@@ -4733,5 +4733,59 @@
       "session-end"
     ],
     "relatedEntities": []
+  },
+  {
+    "id": "ep_1782315348383_908af801",
+    "timestamp": 1782315348383,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 46 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1782315348397_9c68e42e",
+    "timestamp": 1782315348397,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
+  },
+  {
+    "id": "ep_1782315720028_972511e0",
+    "timestamp": 1782315720028,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session ended — Score: 50/100 | Ops: 48 | Feedback signals detected: 0",
+    "tags": [
+      "session-end",
+      "summary"
+    ],
+    "relatedEntities": [
+      "test-session"
+    ]
+  },
+  {
+    "id": "ep_1782315720037_f510400a",
+    "timestamp": 1782315720037,
+    "type": "note",
+    "importance": 0.45,
+    "compression": "full",
+    "content": "Session end",
+    "tags": [
+      "session-end"
+    ],
+    "relatedEntities": []
   }
 ]

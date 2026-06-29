@@ -2,23 +2,50 @@
   "agents": {
     "test-agent": {
       "level": 1,
-      "totalOps": 16,
-      "denied": 4,
-      "allowedOps": 12,
-      "lastActivity": 1781841309315,
+      "totalOps": 40,
+      "denied": 12,
+      "allowedOps": 28,
+      "lastActivity": 1782315720015,
       "consecutiveSuccesses": 2,
       "consecutiveDenials": 0
     },
     "health-agent": {
-      "level": 0,
-      "totalOps": 3,
+      "level": 1,
+      "totalOps": 6,
       "denied": 0,
-      "allowedOps": 3,
-      "lastActivity": 1781841309106,
-      "consecutiveSuccesses": 3,
+      "allowedOps": 6,
+      "lastActivity": 1782315348181,
+      "consecutiveSuccesses": 1,
+      "consecutiveDenials": 0
+    },
+    "agent": {
+      "level": 2,
+      "totalOps": 1,
+      "denied": 0,
+      "allowedOps": 1,
+      "lastActivity": 1782315341130,
+      "consecutiveSuccesses": 1,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L3-1782315348111": {
+      "level": 3,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
+      "consecutiveDenials": 0
+    },
+    "hc-agent-L1-1782315348111": {
+      "level": 1,
+      "totalOps": 0,
+      "denied": 0,
+      "allowedOps": 0,
+      "lastActivity": 0,
+      "consecutiveSuccesses": 0,
       "consecutiveDenials": 0
     }
   },
   "defaultLevel": 0,
-  "lastUpdated": 1781841309315
+  "lastUpdated": 1782315720015
 }
